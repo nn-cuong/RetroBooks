@@ -87,24 +87,32 @@ LIBRARY_THEMES = [
         "text": sdl2.SDL_Color(235, 213, 171, 255), "secondary": sdl2.SDL_Color(184, 159, 118, 255),
         "accent": sdl2.ext.Color(210, 149, 93), "selected": sdl2.ext.Color(63, 46, 32),
         "border": sdl2.ext.Color(139, 69, 19), "divider": sdl2.ext.Color(76, 56, 39),
+        "sel_border": sdl2.ext.Color(168, 120, 40), "sel_bg": sdl2.ext.Color(238, 224, 185),
+        "sel_text": sdl2.SDL_Color(55, 42, 25, 255), "sel_sec": sdl2.SDL_Color(110, 85, 55, 255)
     },
     {
         "bg": sdl2.ext.Color(20, 20, 20), "header": sdl2.ext.Color(10, 10, 10),
         "text": sdl2.SDL_Color(212, 212, 212, 255), "secondary": sdl2.SDL_Color(154, 154, 154, 255),
         "accent": sdl2.ext.Color(184, 168, 216), "selected": sdl2.ext.Color(60, 60, 60),
         "border": sdl2.ext.Color(136, 156, 192), "divider": sdl2.ext.Color(52, 52, 52),
+        "sel_border": sdl2.ext.Color(102, 137, 181), "sel_bg": sdl2.ext.Color(229, 235, 241),
+        "sel_text": sdl2.SDL_Color(30, 30, 30, 255), "sel_sec": sdl2.SDL_Color(80, 80, 80, 255)
     },
     {
         "bg": sdl2.ext.Color(244, 236, 216), "header": sdl2.ext.Color(220, 210, 190),
         "text": sdl2.SDL_Color(59, 52, 40, 255), "secondary": sdl2.SDL_Color(118, 107, 90, 255),
         "accent": sdl2.ext.Color(107, 91, 149), "selected": sdl2.ext.Color(229, 235, 241),
         "border": sdl2.ext.Color(102, 137, 181), "divider": sdl2.ext.Color(204, 193, 171),
+        "sel_border": sdl2.ext.Color(102, 137, 181), "sel_bg": sdl2.ext.Color(229, 235, 241),
+        "sel_text": sdl2.SDL_Color(30, 30, 30, 255), "sel_sec": sdl2.SDL_Color(80, 80, 80, 255)
     },
     {
         "bg": sdl2.ext.Color(243, 231, 199), "header": sdl2.ext.Color(230, 213, 173),
         "text": sdl2.SDL_Color(61, 52, 40, 255), "secondary": sdl2.SDL_Color(117, 104, 84, 255),
         "accent": sdl2.ext.Color(168, 120, 40), "selected": sdl2.ext.Color(216, 185, 110),
         "border": sdl2.ext.Color(216, 197, 157), "divider": sdl2.ext.Color(216, 197, 157),
+        "sel_border": sdl2.ext.Color(168, 120, 40), "sel_bg": sdl2.ext.Color(238, 224, 185),
+        "sel_text": sdl2.SDL_Color(55, 42, 25, 255), "sel_sec": sdl2.SDL_Color(110, 85, 55, 255)
     },
 ]
 
@@ -425,6 +433,10 @@ def main():
     
     state = STATE_BROWSE
     sel_index = 0
+    scroll_y = 0
+    dpad_up_held = False
+    dpad_down_held = False
+    dpad_timer = 0
     visible_items = 15
     theme_idx = load_theme_idx()
     reader_rotation_idx = load_reader_rotation_idx()
@@ -468,8 +480,13 @@ def main():
         return reader_target
 
     def rotate_reader_direction(dx, dy):
-        for _ in range(reader_rotation_idx % 4):
-            dx, dy = dy, -dx
+        rot = reader_rotation_idx % 4
+        if rot == 1:
+            return -dy, dx
+        elif rot == 2:
+            return -dx, -dy
+        elif rot == 3:
+            return dy, -dx
         return dx, dy
 
     def handle_reader_direction(dx, dy):
@@ -601,23 +618,25 @@ def main():
             needs_redraw = True
             
         current_ticks = sdl2.SDL_GetTicks()
-        if state == STATE_READER and (current_ticks - last_axis_scroll > 100):
-            for c in controllers:
-                lx = sdl2.SDL_GameControllerGetAxis(c, sdl2.SDL_CONTROLLER_AXIS_LEFTX)
-                ly = sdl2.SDL_GameControllerGetAxis(c, sdl2.SDL_CONTROLLER_AXIS_LEFTY)
-                rx = sdl2.SDL_GameControllerGetAxis(c, sdl2.SDL_CONTROLLER_AXIS_RIGHTX)
-                ry = sdl2.SDL_GameControllerGetAxis(c, sdl2.SDL_CONTROLLER_AXIS_RIGHTY)
-                axis_x = lx if abs(lx) >= abs(rx) else rx
-                axis_y = ly if abs(ly) >= abs(ry) else ry
-                if abs(axis_x) < 16000 and abs(axis_y) < 16000:
-                    continue
-                if abs(axis_x) > abs(axis_y):
-                    handle_reader_direction(1 if axis_x > 0 else -1, 0)
-                    last_axis_scroll = current_ticks
-                    needs_redraw = True
-                    break
-                else:
-                    handle_reader_direction(0, 1 if axis_y > 0 else -1)
+        axis_up = False
+        axis_down = False
+        for c in controllers:
+            lx = sdl2.SDL_GameControllerGetAxis(c, sdl2.SDL_CONTROLLER_AXIS_LEFTX)
+            ly = sdl2.SDL_GameControllerGetAxis(c, sdl2.SDL_CONTROLLER_AXIS_LEFTY)
+            rx = sdl2.SDL_GameControllerGetAxis(c, sdl2.SDL_CONTROLLER_AXIS_RIGHTX)
+            ry = sdl2.SDL_GameControllerGetAxis(c, sdl2.SDL_CONTROLLER_AXIS_RIGHTY)
+            ax = lx if abs(lx) >= abs(rx) else rx
+            ay = ly if abs(ly) >= abs(ry) else ry
+            if ay < -16000:
+                axis_up = True
+            elif ay > 16000:
+                axis_down = True
+            if state == STATE_READER and (current_ticks - last_axis_scroll > 100):
+                if abs(ax) >= 16000 or abs(ay) >= 16000:
+                    if abs(ax) > abs(ay):
+                        handle_reader_direction(1 if ax > 0 else -1, 0)
+                    else:
+                        handle_reader_direction(0, 1 if ay > 0 else -1)
                     last_axis_scroll = current_ticks
                     needs_redraw = True
                     break
@@ -633,6 +652,12 @@ def main():
                         write_save(current_filepath, reader_scroll_y, current_font_size)
                     running = False
                     
+            elif event.type == sdl2.SDL_CONTROLLERBUTTONUP:
+                btn = event.cbutton.button
+                if btn == sdl2.SDL_CONTROLLER_BUTTON_DPAD_UP:
+                    dpad_up_held = False
+                elif btn == sdl2.SDL_CONTROLLER_BUTTON_DPAD_DOWN:
+                    dpad_down_held = False
             elif event.type == sdl2.SDL_CONTROLLERBUTTONDOWN:
                 btn = event.cbutton.button
                 if btn == sdl2.SDL_CONTROLLER_BUTTON_START:
@@ -645,9 +670,19 @@ def main():
                     list_items += [{"name": f, "is_dir": False} for f in files]
                     
                     if btn == sdl2.SDL_CONTROLLER_BUTTON_DPAD_UP:
-                        sel_index = (sel_index - 1) % max(1, len(list_items))
+                        dpad_up_held = True
+                        dpad_timer = 0
                     elif btn == sdl2.SDL_CONTROLLER_BUTTON_DPAD_DOWN:
-                        sel_index = (sel_index + 1) % max(1, len(list_items))
+                        dpad_down_held = True
+                        dpad_timer = 0
+                    elif btn == sdl2.SDL_CONTROLLER_BUTTON_LEFTSHOULDER: # Page Up
+                        visible_items = 8
+                        sel_index = max(0, sel_index - visible_items)
+                        scroll_y = max(0, scroll_y - visible_items)
+                    elif btn == sdl2.SDL_CONTROLLER_BUTTON_RIGHTSHOULDER: # Page Down
+                        visible_items = 8
+                        sel_index = min(len(list_items) - 1, sel_index + visible_items)
+                        scroll_y = min(max(0, len(list_items) - visible_items), scroll_y + visible_items)
                     elif btn == sdl2.SDL_CONTROLLER_BUTTON_X: # Physical Y - Theme Toggle
                         theme_idx = (theme_idx + 1) % len(THEMES)
                         write_theme_idx(theme_idx)
@@ -658,10 +693,12 @@ def main():
                                 current_path = os.path.dirname(current_path)
                                 folders, files = get_directory_contents(current_path)
                                 sel_index = 0
+                                scroll_y = 0
                             elif item["is_dir"]:
                                 current_path = os.path.join(current_path, item["name"])
                                 folders, files = get_directory_contents(current_path)
                                 sel_index = 0
+                                scroll_y = 0
                             else:
                                 filepath = os.path.join(current_path, item["name"])
                                 if load_book(filepath):
@@ -671,6 +708,7 @@ def main():
                             current_path = os.path.dirname(current_path)
                             folders, files = get_directory_contents(current_path)
                             sel_index = 0
+                            scroll_y = 0
                         
                 elif state == STATE_READER:
                     if btn == sdl2.SDL_CONTROLLER_BUTTON_DPAD_UP:
@@ -711,9 +749,11 @@ def main():
                         
                 elif state == STATE_TOC:
                     if btn == sdl2.SDL_CONTROLLER_BUTTON_DPAD_UP:
-                        toc_sel_index = (toc_sel_index - 1) % max(1, len(chapter_offsets))
+                        dpad_up_held = True
+                        dpad_timer = 0
                     elif btn == sdl2.SDL_CONTROLLER_BUTTON_DPAD_DOWN:
-                        toc_sel_index = (toc_sel_index + 1) % max(1, len(chapter_offsets))
+                        dpad_down_held = True
+                        dpad_timer = 0
                     elif btn == sdl2.SDL_CONTROLLER_BUTTON_B: # Physical A - Select chapter
                         if len(chapter_offsets) > 0:
                             reader_scroll_y = chapter_offsets[toc_sel_index][1]
@@ -728,6 +768,62 @@ def main():
                         running = False
                     elif btn == sdl2.SDL_CONTROLLER_BUTTON_A: # Physical B (Cancel)
                         state = state_before_quit
+
+        # Key repeat logic for library (exact Files app behavior)
+        is_up = dpad_up_held or axis_up
+        is_down = dpad_down_held or axis_down
+        
+        if state == STATE_BROWSE:
+            list_items = [{"name": "..", "is_dir": True}] if current_path != base_path else []
+            list_items += [{"name": f, "is_dir": True} for f in folders]
+            list_items += [{"name": f, "is_dir": False} for f in files]
+            library_visible_items = 8
+            
+            if is_up:
+                if dpad_timer == 0 or (dpad_timer > 15 and dpad_timer % 3 == 0):
+                    if len(list_items) > 0:
+                        if sel_index == 0:
+                            sel_index = len(list_items) - 1
+                            scroll_y = max(0, len(list_items) - library_visible_items)
+                        else:
+                            sel_index -= 1
+                            if sel_index < scroll_y:
+                                scroll_y = sel_index
+                    needs_redraw = True
+                dpad_timer += 1
+            elif is_down:
+                if dpad_timer == 0 or (dpad_timer > 15 and dpad_timer % 3 == 0):
+                    if len(list_items) > 0:
+                        if sel_index == len(list_items) - 1:
+                            sel_index = 0
+                            scroll_y = 0
+                        else:
+                            sel_index += 1
+                            if sel_index >= scroll_y + library_visible_items:
+                                scroll_y = sel_index - library_visible_items + 1
+                    needs_redraw = True
+                dpad_timer += 1
+            else:
+                dpad_timer = 0
+        elif state == STATE_TOC:
+            if is_up:
+                if dpad_timer == 0 or (dpad_timer > 15 and dpad_timer % 3 == 0):
+                    if len(chapter_offsets) > 0:
+                        toc_sel_index = (toc_sel_index - 1) % len(chapter_offsets)
+                    needs_redraw = True
+                dpad_timer += 1
+            elif is_down:
+                if dpad_timer == 0 or (dpad_timer > 15 and dpad_timer % 3 == 0):
+                    if len(chapter_offsets) > 0:
+                        toc_sel_index = (toc_sel_index + 1) % len(chapter_offsets)
+                    needs_redraw = True
+                dpad_timer += 1
+            else:
+                dpad_timer = 0
+        elif state != STATE_READER:
+            dpad_up_held = False
+            dpad_down_held = False
+            dpad_timer = 0
 
         if needs_redraw:
             theme = THEMES[theme_idx]
@@ -751,52 +847,60 @@ def main():
                 list_items += [{"name": f, "is_dir": True} for f in folders]
                 list_items += [{"name": f, "is_dir": False} for f in files]
 
-                library_visible_items = 10
+                library_visible_items = 8
                 book_count = f"{len(files)} BOOK" + ("" if len(files) == 1 else "S")
                 tex, tw, th = render_text(book_count, font_small, library_theme["secondary"])
                 if tex:
                     sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(SCREEN_W - 32 - tw, 27, tw, th))
                     sdl2.SDL_DestroyTexture(tex)
 
-                start_idx = max(0, sel_index - library_visible_items // 2)
+                start_idx = scroll_y
                 end_idx = min(len(list_items), start_idx + library_visible_items)
                 
-                y_start = 92
-                row_h = 62
+                sel_border = library_theme.get("sel_border", sdl2.ext.Color(102, 137, 181))
+                sel_bg = library_theme.get("sel_bg", sdl2.ext.Color(229, 235, 241))
+                sel_text = library_theme.get("sel_text", sdl2.SDL_Color(30, 30, 30, 255))
+                sel_sec = library_theme.get("sel_sec", sdl2.SDL_Color(80, 80, 80, 255))
+
+                y_start = 86
+                row_h = 74
                 for i in range(start_idx, end_idx):
                     item = list_items[i]
                     iy = y_start + (i - start_idx) * row_h
                     
+                    text_col = sel_text if i == sel_index else library_theme["text"]
+                    sec_col = sel_sec if i == sel_index else library_theme["secondary"]
+                    
                     if i == sel_index:
-                        renderer.fill((20, iy, SCREEN_W - 40, row_h + 4), library_theme["selected"])
-                        renderer.fill((20, iy, 3, row_h + 4), library_theme["accent"])
+                        sel_x, sel_y, sel_w, sel_h = 20, iy, SCREEN_W - 40, 68
+                        renderer.fill((sel_x, sel_y, sel_w, sel_h), sel_border)
+                        renderer.fill((sel_x + 2, sel_y + 2, sel_w - 4, sel_h - 4), sel_bg)
 
                     if item["is_dir"]:
-                        # Preserve folder navigation while distinguishing it from books.
                         renderer.fill((42, iy + 18, 18, 14), library_theme["accent"])
                         renderer.fill((44, iy + 15, 9, 4), library_theme["accent"])
-                        tex, tw, th = render_text(item["name"], font_ui_medium, library_theme["text"])
+                        tex, tw, th = render_text(item["name"], font_ui_medium, text_col)
                         if tex:
                             sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(78, iy + 13, min(tw, SCREEN_W - 110), th))
                             sdl2.SDL_DestroyTexture(tex)
                     else:
                         title, author = get_book_display_metadata(item["name"])
-                        icon_bg = library_theme["selected"] if i == sel_index else library_theme["bg"]
+                        icon_bg = sel_bg if i == sel_index else library_theme["bg"]
                         draw_book_icon(renderer, 42, iy + 16, library_theme["accent"], icon_bg)
                         sdlttf.TTF_SetFontStyle(font_ui_medium, sdlttf.TTF_STYLE_BOLD)
-                        tex, tw, th = render_text(title, font_ui_medium, library_theme["text"])
+                        tex, tw, th = render_text(title, font_ui_medium, text_col)
                         sdlttf.TTF_SetFontStyle(font_ui_medium, sdlttf.TTF_STYLE_NORMAL)
                         if tex:
                             sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(78, iy + 4, min(tw, SCREEN_W - 110), th))
                             sdl2.SDL_DestroyTexture(tex)
                         if author:
-                            tex, tw, th = render_text(author, font_small, library_theme["secondary"])
+                            tex, tw, th = render_text(author, font_small, sec_col)
                             if tex:
-                                sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(78, iy + 34, min(tw, SCREEN_W - 110), th))
+                                sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(78, iy + 37, min(tw, SCREEN_W - 110), th))
                                 sdl2.SDL_DestroyTexture(tex)
                         
                 renderer.fill((0, SCREEN_H - 58, SCREEN_W, 1), library_theme["divider"])
-                footer = "A Open    B Back    Y Theme    START Exit"
+                footer = "A: Open    B: Back    Y: Theme    [START] Exit"
                 tex, tw, th = render_text(footer, font_small, library_theme["secondary"])
                 if tex:
                     sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(32, SCREEN_H - 38, tw, th))
