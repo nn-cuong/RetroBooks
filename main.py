@@ -70,6 +70,13 @@ THEMES = [
         "text": sdl2.SDL_Color(51, 48, 43, 255),  # 33302B
         "header": sdl2.ext.Color(230, 225, 210),
         "sel": sdl2.ext.Color(118, 107, 90)
+    },
+    {
+        "name": "Warm Night Light",
+        "bg": sdl2.ext.Color(243, 231, 199),
+        "text": sdl2.SDL_Color(61, 52, 40, 255),
+        "header": sdl2.ext.Color(230, 213, 173),
+        "sel": sdl2.ext.Color(216, 185, 110)
     }
 ]
 
@@ -92,6 +99,12 @@ LIBRARY_THEMES = [
         "text": sdl2.SDL_Color(59, 52, 40, 255), "secondary": sdl2.SDL_Color(118, 107, 90, 255),
         "accent": sdl2.ext.Color(107, 91, 149), "selected": sdl2.ext.Color(229, 235, 241),
         "border": sdl2.ext.Color(102, 137, 181), "divider": sdl2.ext.Color(204, 193, 171),
+    },
+    {
+        "bg": sdl2.ext.Color(243, 231, 199), "header": sdl2.ext.Color(230, 213, 173),
+        "text": sdl2.SDL_Color(61, 52, 40, 255), "secondary": sdl2.SDL_Color(117, 104, 84, 255),
+        "accent": sdl2.ext.Color(168, 120, 40), "selected": sdl2.ext.Color(216, 185, 110),
+        "border": sdl2.ext.Color(216, 197, 157), "divider": sdl2.ext.Color(216, 197, 157),
     },
 ]
 
@@ -147,7 +160,7 @@ def get_directory_contents(path):
         items = os.listdir(path)
         folders = []
         files = []
-        valid_exts = ['.txt', '.md', '.log', '.csv', '.json', '.epub']
+        valid_exts = ['.txt', '.md', '.log', '.csv', '.json', '.epub', '.fb2', '.mobi', '.azw', '.azw3']
         for item in items:
             full_path = os.path.join(path, item)
             if os.path.isdir(full_path):
@@ -178,6 +191,183 @@ def draw_book_icon(renderer, x, y, color, background):
     """Small pixel-friendly book glyph, deliberately free of emoji assets."""
     renderer.fill((x, y, 15, 20), color)
     renderer.fill((x + 3, y + 3, 2, 14), background)
+
+class Chapter:
+    def __init__(self, title, content):
+        self.title = title
+        self.content = content
+
+class Book:
+    def __init__(self, title="", author="", filepath=""):
+        self.title = title
+        self.author = author
+        self.filepath = filepath
+        self.chapters = []
+        self.metadata = {}
+
+class EPUBParser:
+    @staticmethod
+    def parse(filepath) -> Book:
+        import zipfile
+        import xml.etree.ElementTree as ET
+        import html
+        import re
+        
+        book = Book(filepath=filepath)
+        with zipfile.ZipFile(filepath, 'r') as zf:
+            container_xml = zf.read('META-INF/container.xml')
+            root = ET.fromstring(container_xml)
+            opf_path = ""
+            for child in root.iter():
+                if child.tag.endswith('rootfile'):
+                    opf_path = child.attrib.get('full-path')
+                    break
+            if opf_path:
+                opf_dir = os.path.dirname(opf_path)
+                opf_content = zf.read(opf_path)
+                opf_root = ET.fromstring(opf_content)
+                
+                manifest = {}
+                spine = []
+                for child in opf_root.iter():
+                    if child.tag.endswith('item'):
+                        manifest[child.attrib.get('id')] = child.attrib.get('href')
+                    elif child.tag.endswith('itemref'):
+                        spine.append(child.attrib.get('idref'))
+                
+                toc_map = {}
+                for item_id, href in manifest.items():
+                    if href.endswith('.ncx'):
+                        try:
+                            ncx_content = zf.read(href if not opf_dir else f"{opf_dir}/{href}")
+                            ncx_root = ET.fromstring(ncx_content)
+                            for navPoint in ncx_root.iter():
+                                if navPoint.tag.endswith('navPoint'):
+                                    text_node = navPoint.find('.//*{http://www.daisy.org/z3986/2005/ncx/}text')
+                                    content_node = navPoint.find('.//*{http://www.daisy.org/z3986/2005/ncx/}content')
+                                    if text_node is not None and content_node is not None:
+                                        src = content_node.attrib.get('src', '').split('#')[0]
+                                        toc_map[src] = text_node.text
+                        except:
+                            pass
+                
+                for idx, item_id in enumerate(spine):
+                    if item_id in manifest:
+                        href = manifest[item_id]
+                        item_path = href if not opf_dir else f"{opf_dir}/{href}"
+                        try:
+                            html_bytes = zf.read(item_path)
+                            html_str = html_bytes.decode('utf-8', errors='ignore')
+                            html_str = re.sub(r'<(p|br|div|h[1-6]|li|tr|td|th)[^>]*>', '\n', html_str, flags=re.IGNORECASE)
+                            html_str = re.sub(r'<[^>]+>', '', html_str)
+                            html_str = html.unescape(html_str)
+                            html_str = re.sub(r'\n{3,}', '\n\n', html_str)
+                            
+                            title = toc_map.get(href, f"Chapter {idx+1}")
+                            book.chapters.append(Chapter(title, html_str.strip()))
+                        except:
+                            pass
+        return book
+
+class FB2Parser:
+    @staticmethod
+    def parse(filepath) -> Book:
+        import xml.etree.ElementTree as ET
+        import re
+        book = Book(filepath=filepath)
+        with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
+            xml_content = f.read()
+        xml_content = re.sub(r'\sxmlns="[^"]+"', '', xml_content, count=1)
+        try:
+            root = ET.fromstring(xml_content)
+            bodies = root.findall('body')
+            main_body = bodies[0] if bodies else root
+            
+            sections = main_body.findall('.//section')
+            if not sections:
+                text_parts = ["".join(p.itertext()).strip() for p in main_body.findall('.//p')]
+                book.chapters.append(Chapter("Book", "\n\n".join(text_parts)))
+            else:
+                for idx, sec in enumerate(sections):
+                    title_node = sec.find('title')
+                    title_text = "".join(title_node.itertext()).strip() if title_node is not None else f"Chapter {idx+1}"
+                    
+                    text_parts = []
+                    for p in sec.findall('p'):
+                        p_text = "".join(p.itertext()).strip()
+                        if p_text: text_parts.append(p_text)
+                    
+                    book.chapters.append(Chapter(title_text, "\n\n".join(text_parts)))
+        except Exception as e:
+            book.chapters.append(Chapter("Error", f"Could not parse FB2: {str(e)}"))
+        return book
+
+class TXTParser:
+    @staticmethod
+    def parse(filepath) -> Book:
+        book = Book(filepath=filepath)
+        with open(filepath, 'r', encoding='utf-8', errors='replace') as f:
+            text_data = f.read()
+        
+        chunk_len = len(text_data) // 10
+        if chunk_len == 0:
+            book.chapters.append(Chapter("Full Text", text_data))
+        else:
+            for i in range(10):
+                book.chapters.append(Chapter(f"Part {i+1} ({(i)*10}%)", text_data[i*chunk_len:(i+1)*chunk_len]))
+        return book
+
+class KindleParser:
+    @staticmethod
+    def parse(filepath) -> Book:
+        import shutil
+        import re
+        import html
+        
+        try:
+            import mobi
+            extracted_dir, filepath_extracted = mobi.extract(filepath)
+            try:
+                if filepath_extracted.lower().endswith('.epub'):
+                    return EPUBParser.parse(filepath_extracted)
+                else:
+                    book = Book(filepath=filepath)
+                    with open(filepath_extracted, 'r', encoding='utf-8', errors='ignore') as f:
+                        html_str = f.read()
+                        
+                    parts = re.split(r'<mbp:pagebreak[^>]*>', html_str, flags=re.IGNORECASE)
+                    
+                    for idx, part in enumerate(parts):
+                        part = re.sub(r'<(p|br|div|h[1-6]|li|tr|td|th)[^>]*>', '\n', part, flags=re.IGNORECASE)
+                        part = re.sub(r'<[^>]+>', '', part)
+                        part = html.unescape(part)
+                        part = re.sub(r'\n{3,}', '\n\n', part).strip()
+                        
+                        if part:
+                            lines = [l.strip() for l in part.split('\n') if l.strip()]
+                            title = f"Part {idx+1}"
+                            if lines and len(lines[0]) < 60:
+                                title = lines[0]
+                            book.chapters.append(Chapter(title, part))
+                            
+                    if not book.chapters:
+                        book.chapters.append(Chapter("Content", "No readable text found."))
+                    return book
+            finally:
+                try:
+                    shutil.rmtree(extracted_dir)
+                except: pass
+        except Exception as e:
+            book = Book(filepath=filepath)
+            book.chapters.append(Chapter("Error", "This ebook is DRM-protected or unsupported.\n\nError details: " + str(e)))
+            return book
+
+def get_parser(filepath):
+    ext = os.path.splitext(filepath)[1].lower()
+    if ext == '.epub': return EPUBParser()
+    elif ext == '.fb2': return FB2Parser()
+    elif ext in ['.mobi', '.azw', '.azw3']: return KindleParser()
+    else: return TXTParser()
 
 def main():
     sdl2.SDL_Init(sdl2.SDL_INIT_VIDEO | sdl2.SDL_INIT_JOYSTICK | sdl2.SDL_INIT_GAMECONTROLLER)
@@ -385,82 +575,14 @@ def main():
         current_filepath = filepath
         
         try:
-            ext = os.path.splitext(filepath)[1].lower()
-            
-            if ext == '.epub':
-                import zipfile
-                import xml.etree.ElementTree as ET
-                import html
-                import re
+            parser = get_parser(filepath)
+            book = parser.parse(filepath)
+            if not book.chapters:
+                return False
                 
-                with zipfile.ZipFile(filepath, 'r') as zf:
-                    container_xml = zf.read('META-INF/container.xml')
-                    root = ET.fromstring(container_xml)
-                    opf_path = ""
-                    for child in root.iter():
-                        if child.tag.endswith('rootfile'):
-                            opf_path = child.attrib.get('full-path')
-                            break
-                    if opf_path:
-                        opf_dir = os.path.dirname(opf_path)
-                        opf_content = zf.read(opf_path)
-                        opf_root = ET.fromstring(opf_content)
-                        
-                        manifest = {}
-                        spine = []
-                        for child in opf_root.iter():
-                            if child.tag.endswith('item'):
-                                manifest[child.attrib.get('id')] = child.attrib.get('href')
-                            elif child.tag.endswith('itemref'):
-                                spine.append(child.attrib.get('idref'))
-                        
-                        # Try to parse toc.ncx for real titles (optional, fallback to spine names)
-                        toc_map = {}
-                        for item_id, href in manifest.items():
-                            if href.endswith('.ncx'):
-                                try:
-                                    ncx_content = zf.read(href if not opf_dir else f"{opf_dir}/{href}")
-                                    ncx_root = ET.fromstring(ncx_content)
-                                    for navPoint in ncx_root.iter():
-                                        if navPoint.tag.endswith('navPoint'):
-                                            text_node = navPoint.find('.//*{http://www.daisy.org/z3986/2005/ncx/}text')
-                                            content_node = navPoint.find('.//*{http://www.daisy.org/z3986/2005/ncx/}content')
-                                            if text_node is not None and content_node is not None:
-                                                src = content_node.attrib.get('src', '').split('#')[0]
-                                                toc_map[src] = text_node.text
-                                except:
-                                    pass
-                        
-                        for idx, item_id in enumerate(spine):
-                            if item_id in manifest:
-                                href = manifest[item_id]
-                                item_path = href if not opf_dir else f"{opf_dir}/{href}"
-                                try:
-                                    html_bytes = zf.read(item_path)
-                                    html_str = html_bytes.decode('utf-8', errors='ignore')
-                                    # Convert structural tags to newlines
-                                    html_str = re.sub(r'<(p|br|div|h[1-6])[^>]*>', '\n', html_str, flags=re.IGNORECASE)
-                                    html_str = re.sub(r'<[^>]+>', '', html_str)
-                                    html_str = html.unescape(html_str)
-                                    html_str = re.sub(r'\n{3,}', '\n\n', html_str)
-                                    
-                                    # Attempt title matching
-                                    title = toc_map.get(href, f"Chapter {idx+1}")
-                                    raw_chapters.append((title, html_str))
-                                except:
-                                    pass
-            else:
-                with open(filepath, 'r', encoding='utf-8', errors='replace') as f:
-                    text_data = f.read()
-                    
-                # Split large txt into 10 chunks for pseudo-TOC
-                chunk_len = len(text_data) // 10
-                if chunk_len == 0:
-                    raw_chapters.append(("Full Text", text_data))
-                else:
-                    for i in range(10):
-                        raw_chapters.append((f"Part {i+1} ({(i)*10}%)", text_data[i*chunk_len:(i+1)*chunk_len]))
-
+            for ch in book.chapters:
+                raw_chapters.append((ch.title, ch.content))
+                
             recalculate_layout()
             if reader_lines:
                 reader_scroll_y = max(0, min(reader_scroll_y, len(reader_lines) - lines_per_page))
@@ -471,6 +593,7 @@ def main():
     running = True
     needs_redraw = True
     last_axis_scroll = 0
+    show_hud = True
     
     while running:
         events = sdl2.ext.get_events()
@@ -559,12 +682,12 @@ def main():
                     elif btn == sdl2.SDL_CONTROLLER_BUTTON_DPAD_RIGHT:
                         handle_reader_direction(1, 0)
                     elif btn == sdl2.SDL_CONTROLLER_BUTTON_LEFTSHOULDER: # Decrease Font
-                        current_font_size = max(16, current_font_size - 4)
+                        current_font_size = max(30, current_font_size - 2)
                         recalculate_layout()
                         if reader_lines:
                             reader_scroll_y = max(0, min(reader_scroll_y, len(reader_lines) - lines_per_page))
                     elif btn == sdl2.SDL_CONTROLLER_BUTTON_RIGHTSHOULDER: # Increase Font
-                        current_font_size = min(64, current_font_size + 4)
+                        current_font_size = min(44, current_font_size + 2)
                         recalculate_layout()
                         if reader_lines:
                             reader_scroll_y = max(0, min(reader_scroll_y, len(reader_lines) - lines_per_page))
@@ -583,6 +706,8 @@ def main():
                     elif btn == sdl2.SDL_CONTROLLER_BUTTON_A: # Physical B - Exit Reader
                         write_save(current_filepath, reader_scroll_y, current_font_size)
                         state = STATE_BROWSE
+                    elif btn == sdl2.SDL_CONTROLLER_BUTTON_B: # Physical A - Toggle HUD
+                        show_hud = not show_hud
                         
                 elif state == STATE_TOC:
                     if btn == sdl2.SDL_CONTROLLER_BUTTON_DPAD_UP:
@@ -626,7 +751,7 @@ def main():
                 list_items += [{"name": f, "is_dir": True} for f in folders]
                 list_items += [{"name": f, "is_dir": False} for f in files]
 
-                library_visible_items = 8
+                library_visible_items = 10
                 book_count = f"{len(files)} BOOK" + ("" if len(files) == 1 else "S")
                 tex, tw, th = render_text(book_count, font_small, library_theme["secondary"])
                 if tex:
@@ -637,39 +762,37 @@ def main():
                 end_idx = min(len(list_items), start_idx + library_visible_items)
                 
                 y_start = 92
-                row_h = 72
+                row_h = 62
                 for i in range(start_idx, end_idx):
                     item = list_items[i]
                     iy = y_start + (i - start_idx) * row_h
                     
                     if i == sel_index:
-                        renderer.fill((20, iy, SCREEN_W - 40, row_h - 4), library_theme["selected"])
-                        renderer.fill((20, iy, 3, row_h - 4), library_theme["accent"])
-                    elif i < end_idx - 1:
-                        renderer.fill((42, iy + row_h - 5, SCREEN_W - 84, 1), library_theme["divider"])
+                        renderer.fill((20, iy, SCREEN_W - 40, row_h + 4), library_theme["selected"])
+                        renderer.fill((20, iy, 3, row_h + 4), library_theme["accent"])
 
                     if item["is_dir"]:
                         # Preserve folder navigation while distinguishing it from books.
-                        renderer.fill((42, iy + 22, 18, 14), library_theme["accent"])
-                        renderer.fill((44, iy + 19, 9, 4), library_theme["accent"])
+                        renderer.fill((42, iy + 18, 18, 14), library_theme["accent"])
+                        renderer.fill((44, iy + 15, 9, 4), library_theme["accent"])
                         tex, tw, th = render_text(item["name"], font_ui_medium, library_theme["text"])
                         if tex:
-                            sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(78, iy + 17, min(tw, SCREEN_W - 110), th))
+                            sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(78, iy + 13, min(tw, SCREEN_W - 110), th))
                             sdl2.SDL_DestroyTexture(tex)
                     else:
                         title, author = get_book_display_metadata(item["name"])
                         icon_bg = library_theme["selected"] if i == sel_index else library_theme["bg"]
-                        draw_book_icon(renderer, 42, iy + 20, library_theme["accent"], icon_bg)
+                        draw_book_icon(renderer, 42, iy + 16, library_theme["accent"], icon_bg)
                         sdlttf.TTF_SetFontStyle(font_ui_medium, sdlttf.TTF_STYLE_BOLD)
                         tex, tw, th = render_text(title, font_ui_medium, library_theme["text"])
                         sdlttf.TTF_SetFontStyle(font_ui_medium, sdlttf.TTF_STYLE_NORMAL)
                         if tex:
-                            sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(78, iy + 7, min(tw, SCREEN_W - 110), th))
+                            sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(78, iy + 4, min(tw, SCREEN_W - 110), th))
                             sdl2.SDL_DestroyTexture(tex)
                         if author:
                             tex, tw, th = render_text(author, font_small, library_theme["secondary"])
                             if tex:
-                                sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(78, iy + 40, min(tw, SCREEN_W - 110), th))
+                                sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(78, iy + 34, min(tw, SCREEN_W - 110), th))
                                 sdl2.SDL_DestroyTexture(tex)
                         
                 renderer.fill((0, SCREEN_H - 58, SCREEN_W, 1), library_theme["divider"])
@@ -711,37 +834,39 @@ def main():
                         y_pos += step
                     i += 1
                 
-                # Progress bar
-                if len(reader_lines) > 0:
-                    progress = min(1.0, reader_scroll_y / max(1, len(reader_lines) - lines_per_page))
-                    bar_w = int((reader_w - 40) * progress)
-                    renderer.fill((20, reader_h - 10, reader_w - 40, 5), theme["sel"])
-                    renderer.fill((20, reader_h - 10, bar_w, 5), theme["text"])
-                
-                # Top HUD: Chapter Name and Page Number
-                curr_chap = "Chapter 1"
-                for ch_title, ch_line in chapter_offsets:
-                    if ch_line <= reader_scroll_y:
-                        curr_chap = ch_title
-                    else:
-                        break
-                
-                total_pages = max(1, len(reader_lines) // lines_per_page + 1)
-                curr_page = reader_scroll_y // lines_per_page + 1
-                
-                book_name = os.path.basename(current_filepath)
-                hud_top = f"{book_name} - {curr_chap} - Page {curr_page}/{total_pages}"
-                tex, tw, th = render_text(hud_top, font_small, theme["sel"])
-                if tex:
-                    sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(20, 15, min(tw, reader_w-40), th))
-                    sdl2.SDL_DestroyTexture(tex)
-                
-                # Bottom HUD: Instructions
-                footer = f"Size: {current_font_size}  D-Pad: Scroll  L/R: Aa  B: Back  X: Rotate  Y: Theme  SELECT: Contents  START: Exit"
-                tex, tw, th = render_text(footer, font_small, theme["text"])
-                if tex:
-                    sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(20, reader_h - 45, min(tw, reader_w-40), th))
-                    sdl2.SDL_DestroyTexture(tex)
+                # HUD Elements
+                if show_hud:
+                    # Progress bar
+                    if len(reader_lines) > 0:
+                        progress = min(1.0, reader_scroll_y / max(1, len(reader_lines) - lines_per_page))
+                        bar_w = int((reader_w - 40) * progress)
+                        renderer.fill((20, reader_h - 10, reader_w - 40, 5), theme["sel"])
+                        renderer.fill((20, reader_h - 10, bar_w, 5), theme["text"])
+                    
+                    # Top HUD: Chapter Name and Page Number
+                    curr_chap = "Chapter 1"
+                    for ch_title, ch_line in chapter_offsets:
+                        if ch_line <= reader_scroll_y:
+                            curr_chap = ch_title
+                        else:
+                            break
+                    
+                    total_pages = max(1, len(reader_lines) // lines_per_page + 1)
+                    curr_page = reader_scroll_y // lines_per_page + 1
+                    
+                    book_name = os.path.basename(current_filepath)
+                    hud_top = f"{book_name} - {curr_chap} - Page {curr_page}/{total_pages}"
+                    tex, tw, th = render_text(hud_top, font_small, theme["text"])
+                    if tex:
+                        sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(20, 15, min(tw, reader_w-40), th))
+                        sdl2.SDL_DestroyTexture(tex)
+                    
+                    # Bottom HUD: Instructions
+                    footer = f"Size: {current_font_size} | L/R: Aa | A: HUD | B: Back | X: Rotate | Y: Theme | SELECT: Contents | START: Exit"
+                    tex, tw, th = render_text(footer, font_small, theme["text"])
+                    if tex:
+                        sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(20, reader_h - 45, min(tw, reader_w-40), th))
+                        sdl2.SDL_DestroyTexture(tex)
 
                 if drawing_rotated:
                     sdl2.SDL_SetRenderTarget(renderer.sdlrenderer, None)
@@ -797,7 +922,7 @@ def main():
                     sdl2.SDL_DestroyTexture(tex)
                 
                 msg2 = "A: Confirm   B: Cancel"
-                tex, tw, th = render_text(msg2, font_ui_medium, theme["sel"])
+                tex, tw, th = render_text(msg2, font_ui_medium, theme["text"])
                 if tex:
                     sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(pop_x + pop_w//2 - tw//2, pop_y + 130, tw, th))
                     sdl2.SDL_DestroyTexture(tex)
