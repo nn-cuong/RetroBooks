@@ -1,0 +1,6 @@
+{
+    "label": "RetroRead",
+    "icon": "icon.png",
+    "launch": "launch.sh",
+    "description": "A comfortable text and EPUB reader for your books and notes."
+}
