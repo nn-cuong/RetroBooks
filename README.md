@@ -12,6 +12,12 @@ Một ứng dụng đọc tài liệu (RetroRead) mã nguồn mở, được t�
 - Quản lý thư viện sách tích hợp sẵn (hỗ trợ EPUB, TXT).
 - Điều khiển lật trang, cuộn mượt mà bằng phím bấm hoặc gamepad.
 
+## ⚙️ Hướng dẫn cài đặt
+Để cài đặt ứng dụng lên máy Trimui của bạn, chỉ cần làm theo các bước đơn giản sau:
+1. Tải toàn bộ mã nguồn (source code) của repository này về máy tính.
+2. Copy toàn bộ thư mục app (thư mục `RetroRead`) và dán vào thư mục `Apps` nằm trên thẻ nhớ (SD Card) của máy.
+3. Lắp thẻ nhớ vào máy Trimui, ứng dụng sẽ tự động xuất hiện trong giao diện Apps.
+
 ## 📜 Tuyên bố Mã nguồn mở (Open Source) & Bản quyền
 Dự án này là mã nguồn mở và được phát hành dưới giấy phép **MIT License**. Bạn hoàn toàn có thể tự do sử dụng, học hỏi, sao chép hoặc phát triển thêm.
 
