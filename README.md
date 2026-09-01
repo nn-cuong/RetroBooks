@@ -16,9 +16,10 @@ Một ứng dụng đọc tài liệu (RetroRead) mã nguồn mở, được t�
 
 ## ⚙️ Hướng dẫn cài đặt
 Để cài đặt ứng dụng lên máy Trimui của bạn, cực kỳ đơn giản:
-1. Tải toàn bộ mã nguồn (source code) của kho lưu trữ (repository) này về máy tính.
-2. **Copy toàn bộ thư mục app `RetroRead` và dán vào thư mục `Apps` nằm trên thẻ nhớ (SD Card) của máy.**
-3. Lắp thẻ nhớ vào máy Trimui, ứng dụng sẽ tự động xuất hiện trong giao diện menu Apps.
+1. Bấm vào nút `<> Code` màu xanh lá ở trên Github, sau đó chọn **Download ZIP** để tải mã nguồn về máy tính.
+2. Giải nén file ZIP vừa tải ra, đảm bảo thư mục giải nén được đặt tên là `RetroRead`.
+3. **Copy toàn bộ thư mục `RetroRead` đó và dán vào thư mục `Apps` nằm trên thẻ nhớ (SD Card) của máy.**
+4. Lắp thẻ nhớ vào máy Trimui, ứng dụng sẽ tự động xuất hiện trong giao diện menu Apps.
 
 ## 📜 Tuyên bố Mã nguồn mở (Open Source) & Bản quyền
 Dự án này là mã nguồn mở và được phát hành dưới giấy phép **MIT License**. Bạn hoàn toàn có thể tự do sử dụng, học hỏi, sao chép hoặc phát triển thêm.
