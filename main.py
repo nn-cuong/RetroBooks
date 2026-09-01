@@ -741,6 +741,11 @@ def main():
                     elif btn == sdl2.SDL_CONTROLLER_BUTTON_BACK: # SELECT - TOC
                         state = STATE_TOC
                         toc_sel_index = 0
+                        for idx, (ch_title, ch_line) in enumerate(chapter_offsets):
+                            if ch_line <= reader_scroll_y:
+                                toc_sel_index = idx
+                            else:
+                                break
                     elif btn == sdl2.SDL_CONTROLLER_BUTTON_A: # Physical B - Exit Reader
                         write_save(current_filepath, reader_scroll_y, current_font_size)
                         state = STATE_BROWSE
