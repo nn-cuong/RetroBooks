@@ -52,69 +52,123 @@ SCREEN_H = 768
 # Themes
 THEMES = [
     {
-        "name": "Paper (Vintage)",
-        "bg": sdl2.ext.Color(40, 30, 20),         # Dark brown background
-        "text": sdl2.SDL_Color(235, 213, 171, 255), # EBD5AB text
-        "header": sdl2.ext.Color(30, 20, 15),
-        "sel": sdl2.ext.Color(139, 69, 19)
+        "name": "Vintage Dark",
+        "bg": sdl2.ext.Color(40, 30, 20),          # #281E14
+        "text": sdl2.SDL_Color(235, 213, 171, 255),# #EBD5AB
+        "header": sdl2.ext.Color(30, 20, 15),      # #1E140F
+        "sel": sdl2.ext.Color(139, 69, 19),        # #8B4513
     },
     {
         "name": "Night Mode",
-        "bg": sdl2.ext.Color(23, 25, 28),         # 17191C
-        "text": sdl2.SDL_Color(232, 229, 221, 255), # E8E5DD
-        "header": sdl2.ext.Color(15, 17, 19),
-        "sel": sdl2.ext.Color(60, 60, 60)
+        "bg": sdl2.ext.Color(23, 25, 28),          # #17191C
+        "text": sdl2.SDL_Color(232, 229, 221, 255),# #E8E5DD
+        "header": sdl2.ext.Color(15, 17, 19),      # #0F1113
+        "sel": sdl2.ext.Color(60, 60, 60),         # #3C3C3C
     },
     {
-        "name": "Light Mode",
-        "bg": sdl2.ext.Color(245, 241, 230),      # F5F1E6
-        "text": sdl2.SDL_Color(51, 48, 43, 255),  # 33302B
-        "header": sdl2.ext.Color(230, 225, 210),
-        "sel": sdl2.ext.Color(118, 107, 90)
+        "name": "Paper",
+        "bg": sdl2.ext.Color(245, 241, 230),       # #F5F1E6
+        "text": sdl2.SDL_Color(51, 48, 43, 255),   # #33302B
+        "header": sdl2.ext.Color(230, 225, 210),   # #E6E1D2
+        "sel": sdl2.ext.Color(118, 107, 90),       # #766B5A
     },
     {
-        "name": "Warm Night Light",
-        "bg": sdl2.ext.Color(243, 231, 199),
-        "text": sdl2.SDL_Color(61, 52, 40, 255),
-        "header": sdl2.ext.Color(230, 213, 173),
-        "sel": sdl2.ext.Color(216, 185, 110)
+        "name": "Warm Night",
+        "bg": sdl2.ext.Color(243, 231, 199),       # #F3E7C7
+        "text": sdl2.SDL_Color(61, 52, 40, 255),   # #3D3428
+        "header": sdl2.ext.Color(230, 213, 173),   # #E6D5AD
+        "sel": sdl2.ext.Color(216, 185, 110),      # #D8B96E
+    },
+    {
+        "name": "AMOLED Black",
+        "bg": sdl2.ext.Color(0, 0, 0),             # #000000
+        "text": sdl2.SDL_Color(218, 218, 218, 255),# #DADADA
+        "header": sdl2.ext.Color(5, 5, 5),         # #050505
+        "sel": sdl2.ext.Color(37, 37, 37),         # #252525
+    },
+    {
+        "name": "Forest",
+        "bg": sdl2.ext.Color(24, 32, 27),          # #18201B
+        "text": sdl2.SDL_Color(217, 226, 213, 255),# #D9E2D5
+        "header": sdl2.ext.Color(16, 23, 17),      # #101711
+        "sel": sdl2.ext.Color(73, 98, 79),         # #49624F
     }
 ]
 
 # Library-only palette.  The reader keeps its existing themes and rendering.
 LIBRARY_THEMES = [
     {
-        "bg": sdl2.ext.Color(40, 30, 20), "header": sdl2.ext.Color(30, 20, 15),
-        "text": sdl2.SDL_Color(235, 213, 171, 255), "secondary": sdl2.SDL_Color(184, 159, 118, 255),
-        "accent": sdl2.ext.Color(210, 149, 93), "selected": sdl2.ext.Color(63, 46, 32),
-        "border": sdl2.ext.Color(139, 69, 19), "divider": sdl2.ext.Color(76, 56, 39),
-        "sel_border": sdl2.ext.Color(168, 120, 40), "sel_bg": sdl2.ext.Color(238, 224, 185),
-        "sel_text": sdl2.SDL_Color(55, 42, 25, 255), "sel_sec": sdl2.SDL_Color(110, 85, 55, 255)
+        "bg": sdl2.ext.Color(40, 30, 20),          # #281E14
+        "header": sdl2.ext.Color(30, 20, 15),      # #1E140F
+        "divider": sdl2.ext.Color(76, 56, 39),     # #4C3827
+        "text": sdl2.SDL_Color(235, 213, 171, 255),# #EBD5AB
+        "secondary": sdl2.SDL_Color(184, 159, 118, 255),# #B89F76
+        "accent": sdl2.ext.Color(210, 149, 93),    # #D2955D
+        "sel_border": sdl2.ext.Color(168, 120, 40),# #A87828
+        "sel_bg": sdl2.ext.Color(238, 224, 185),   # #EEE0B9
+        "sel_text": sdl2.SDL_Color(55, 42, 25, 255),# #372A19
+        "sel_sec": sdl2.SDL_Color(110, 85, 55, 255),# #6E5537
     },
     {
-        "bg": sdl2.ext.Color(20, 20, 20), "header": sdl2.ext.Color(10, 10, 10),
-        "text": sdl2.SDL_Color(212, 212, 212, 255), "secondary": sdl2.SDL_Color(154, 154, 154, 255),
-        "accent": sdl2.ext.Color(184, 168, 216), "selected": sdl2.ext.Color(60, 60, 60),
-        "border": sdl2.ext.Color(136, 156, 192), "divider": sdl2.ext.Color(52, 52, 52),
-        "sel_border": sdl2.ext.Color(102, 137, 181), "sel_bg": sdl2.ext.Color(229, 235, 241),
-        "sel_text": sdl2.SDL_Color(30, 30, 30, 255), "sel_sec": sdl2.SDL_Color(80, 80, 80, 255)
+        "bg": sdl2.ext.Color(20, 20, 20),          # #141414
+        "header": sdl2.ext.Color(10, 10, 10),      # #0A0A0A
+        "divider": sdl2.ext.Color(52, 52, 52),     # #343434
+        "text": sdl2.SDL_Color(212, 212, 212, 255),# #D4D4D4
+        "secondary": sdl2.SDL_Color(154, 154, 154, 255),# #9A9A9A
+        "accent": sdl2.ext.Color(164, 177, 194),   # #A4B1C2
+        "sel_border": sdl2.ext.Color(102, 137, 181),# #6689B5
+        "sel_bg": sdl2.ext.Color(229, 235, 241),   # #E5EBF1
+        "sel_text": sdl2.SDL_Color(30, 30, 30, 255),# #1E1E1E
+        "sel_sec": sdl2.SDL_Color(80, 80, 80, 255),# #505050
     },
     {
-        "bg": sdl2.ext.Color(244, 236, 216), "header": sdl2.ext.Color(220, 210, 190),
-        "text": sdl2.SDL_Color(59, 52, 40, 255), "secondary": sdl2.SDL_Color(118, 107, 90, 255),
-        "accent": sdl2.ext.Color(107, 91, 149), "selected": sdl2.ext.Color(229, 235, 241),
-        "border": sdl2.ext.Color(102, 137, 181), "divider": sdl2.ext.Color(204, 193, 171),
-        "sel_border": sdl2.ext.Color(102, 137, 181), "sel_bg": sdl2.ext.Color(229, 235, 241),
-        "sel_text": sdl2.SDL_Color(30, 30, 30, 255), "sel_sec": sdl2.SDL_Color(80, 80, 80, 255)
+        "bg": sdl2.ext.Color(244, 236, 216),       # #F4ECD8
+        "header": sdl2.ext.Color(220, 210, 190),   # #DCD2BE
+        "divider": sdl2.ext.Color(204, 193, 171),  # #CCC1AB
+        "text": sdl2.SDL_Color(59, 52, 40, 255),   # #3B3428
+        "secondary": sdl2.SDL_Color(118, 107, 90, 255),# #766B5A
+        "accent": sdl2.ext.Color(107, 91, 149),    # #6B5B95
+        "sel_border": sdl2.ext.Color(102, 137, 181),# #6689B5
+        "sel_bg": sdl2.ext.Color(229, 235, 241),   # #E5EBF1
+        "sel_text": sdl2.SDL_Color(30, 30, 30, 255),# #1E1E1E
+        "sel_sec": sdl2.SDL_Color(80, 80, 80, 255),# #505050
     },
     {
-        "bg": sdl2.ext.Color(243, 231, 199), "header": sdl2.ext.Color(230, 213, 173),
-        "text": sdl2.SDL_Color(61, 52, 40, 255), "secondary": sdl2.SDL_Color(117, 104, 84, 255),
-        "accent": sdl2.ext.Color(168, 120, 40), "selected": sdl2.ext.Color(216, 185, 110),
-        "border": sdl2.ext.Color(216, 197, 157), "divider": sdl2.ext.Color(216, 197, 157),
-        "sel_border": sdl2.ext.Color(168, 120, 40), "sel_bg": sdl2.ext.Color(238, 224, 185),
-        "sel_text": sdl2.SDL_Color(55, 42, 25, 255), "sel_sec": sdl2.SDL_Color(110, 85, 55, 255)
+        "bg": sdl2.ext.Color(243, 231, 199),       # #F3E7C7
+        "header": sdl2.ext.Color(230, 213, 173),   # #E6D5AD
+        "divider": sdl2.ext.Color(216, 197, 157),  # #D8C59D
+        "text": sdl2.SDL_Color(61, 52, 40, 255),   # #3D3428
+        "secondary": sdl2.SDL_Color(117, 104, 84, 255),# #756854
+        "accent": sdl2.ext.Color(168, 120, 40),    # #A87828
+        "sel_border": sdl2.ext.Color(168, 120, 40),# #A87828
+        "sel_bg": sdl2.ext.Color(238, 224, 185),   # #EEE0B9
+        "sel_text": sdl2.SDL_Color(55, 42, 25, 255),# #372A19
+        "sel_sec": sdl2.SDL_Color(110, 85, 55, 255),# #6E5537
     },
+    {
+        "bg": sdl2.ext.Color(0, 0, 0),             # #000000
+        "header": sdl2.ext.Color(5, 5, 5),         # #050505
+        "divider": sdl2.ext.Color(26, 26, 26),     # #1A1A1A
+        "text": sdl2.SDL_Color(216, 216, 216, 255),# #D8D8D8
+        "secondary": sdl2.SDL_Color(136, 136, 136, 255),# #888888
+        "accent": sdl2.ext.Color(143, 168, 199),   # #8FA8C7
+        "sel_border": sdl2.ext.Color(112, 112, 112),# #707070
+        "sel_bg": sdl2.ext.Color(28, 28, 28),      # #1C1C1C
+        "sel_text": sdl2.SDL_Color(240, 240, 240, 255),# #F0F0F0
+        "sel_sec": sdl2.SDL_Color(170, 170, 170, 255), # #AAAAAA
+    },
+    {
+        "bg": sdl2.ext.Color(24, 32, 27),          # #18201B
+        "header": sdl2.ext.Color(16, 23, 17),      # #101711
+        "divider": sdl2.ext.Color(52, 66, 55),     # #344237
+        "text": sdl2.SDL_Color(217, 226, 213, 255),# #D9E2D5
+        "secondary": sdl2.SDL_Color(158, 173, 159, 255),# #9EAD9F
+        "accent": sdl2.ext.Color(168, 184, 138),   # #A8B88A
+        "sel_border": sdl2.ext.Color(112, 138, 104),# #708A68
+        "sel_bg": sdl2.ext.Color(41, 54, 45),      # #29362D
+        "sel_text": sdl2.SDL_Color(240, 244, 237, 255),# #F0F4ED
+        "sel_sec": sdl2.SDL_Color(184, 195, 184, 255), # #B8C3B8
+    }
 ]
 
 def load_theme_idx():
@@ -126,6 +180,13 @@ def load_theme_idx():
 
 def write_theme_idx(theme_idx):
     write_settings({"theme_idx": theme_idx % len(THEMES)})
+
+def load_library_view():
+    settings = load_settings()
+    return settings.get("library_view", "list")
+
+def write_library_view(view_mode):
+    write_settings({"library_view": view_mode})
 
 def load_reader_rotation_idx():
     settings = load_settings()
@@ -186,16 +247,12 @@ def get_directory_contents(path):
         return [], []
 
 def get_book_display_metadata(filename):
-    """Derive library labels from a filename without changing the real path."""
+    """Derive library label from a filename without changing the real path."""
     stem = os.path.splitext(filename)[0]
-    title, separator, author = stem.rpartition(" - ")
+    title, separator, _ = stem.rpartition(" - ")
     if not separator:
-        return stem, ""
-    # Keep common initials readable in the small secondary line; discard only
-    # the existing display suffix used by the bundled naming convention.
-    author = re.sub(r"\b([A-Z])\.([A-Z])\.", r"\1. \2.", author.strip())
-    author = re.sub(r"\s+AU$", "", author)
-    return title.strip(), author
+        return stem.strip(), ""
+    return title.strip(), ""
 
 def draw_book_icon(renderer, x, y, color, background):
     """Small pixel-friendly book glyph, deliberately free of emoji assets."""
@@ -498,13 +555,70 @@ def main():
     
     state = STATE_BROWSE
     sel_index = 0
+    prev_sel_index = 0
+    sel_time = 0
+    marquee_active = False
     scroll_y = 0
     dpad_up_held = False
     dpad_down_held = False
+    dpad_left_held = False
+    dpad_right_held = False
     dpad_timer = 0
+    dpad_horiz_timer = 0
     visible_items = 15
     theme_idx = load_theme_idx()
     reader_rotation_idx = load_reader_rotation_idx()
+    library_view_mode = load_library_view() # "list" or "grid"
+    cover_cache = {} # filepath -> (texture, orig_w, orig_h)
+
+    def extract_epub_cover_data(filepath):
+        import zipfile
+        try:
+            with zipfile.ZipFile(filepath, 'r') as zf:
+                names = zf.namelist()
+                img_exts = ('.jpg', '.jpeg', '.png', '.webp', '.bmp')
+                # 1. Look for 'cover' in filename
+                covers = [n for n in names if any(n.lower().endswith(ext) for ext in img_exts) and 'cover' in os.path.basename(n).lower() and not n.startswith('__MACOSX')]
+                if covers:
+                    return zf.read(covers[0])
+                # 2. Look for any valid image
+                imgs = [n for n in names if any(n.lower().endswith(ext) for ext in img_exts) and not n.startswith('__MACOSX') and not os.path.basename(n).startswith('.')]
+                if imgs:
+                    return zf.read(imgs[0])
+        except Exception:
+            pass
+        return None
+
+    def get_cover_texture(filepath):
+        if filepath in cover_cache:
+            return cover_cache[filepath]
+        try:
+            ext = os.path.splitext(filepath)[1].lower()
+            img_data = None
+            if ext == '.epub':
+                img_data = extract_epub_cover_data(filepath)
+            if img_data:
+                rw = sdl2.SDL_RWFromConstMem(img_data, len(img_data))
+                surf = sdlimage.IMG_Load_RW(rw, 1)
+                if surf:
+                    w = surf.contents.w
+                    h = surf.contents.h
+                    tex = sdl2.SDL_CreateTextureFromSurface(renderer.sdlrenderer, surf)
+                    sdl2.SDL_FreeSurface(surf)
+                    if tex:
+                        cover_cache[filepath] = (tex, w, h)
+                        return (tex, w, h)
+        except Exception:
+            pass
+        cover_cache[filepath] = (None, 0, 0)
+        return (None, 0, 0)
+
+    def clear_cover_cache():
+        for tex, _, _ in cover_cache.values():
+            if tex:
+                sdl2.SDL_DestroyTexture(tex)
+        cover_cache.clear()
+
     
     # Reader Data
     raw_chapters = [] # List of (title, text_string)
@@ -825,6 +939,8 @@ def main():
         current_ticks = sdl2.SDL_GetTicks()
         axis_up = False
         axis_down = False
+        axis_left = False
+        axis_right = False
         for c in controllers:
             lx = sdl2.SDL_GameControllerGetAxis(c, sdl2.SDL_CONTROLLER_AXIS_LEFTX)
             ly = sdl2.SDL_GameControllerGetAxis(c, sdl2.SDL_CONTROLLER_AXIS_LEFTY)
@@ -832,12 +948,16 @@ def main():
             ry = sdl2.SDL_GameControllerGetAxis(c, sdl2.SDL_CONTROLLER_AXIS_RIGHTY)
             ax = lx if abs(lx) >= abs(rx) else rx
             ay = ly if abs(ly) >= abs(ry) else ry
-            if ay < -16000:
+            if ay < -15000:
                 axis_up = True
-            elif ay > 16000:
+            elif ay > 15000:
                 axis_down = True
+            if ax < -15000:
+                axis_left = True
+            elif ax > 15000:
+                axis_right = True
             if state == STATE_READER and (current_ticks - last_axis_scroll > 100):
-                if abs(ax) >= 16000 or abs(ay) >= 16000:
+                if abs(ax) >= 15000 or abs(ay) >= 15000:
                     if abs(ax) > abs(ay):
                         handle_reader_direction(1 if ax > 0 else -1, 0)
                     else:
@@ -845,13 +965,32 @@ def main():
                     last_axis_scroll = current_ticks
                     needs_redraw = True
                     break
-            elif state == STATE_IMAGE_VIEW and image_zoom > 0 and (current_ticks - last_axis_scroll > 40):
-                if abs(ax) >= 12000 or abs(ay) >= 12000:
-                    image_pan_x -= int(ax / 1200)
-                    image_pan_y -= int(ay / 1200)
-                    last_axis_scroll = current_ticks
-                    needs_redraw = True
-                    break
+            elif state == STATE_IMAGE_VIEW:
+                if image_zoom > 0 and (current_ticks - last_axis_scroll > 40):
+                    if abs(ax) >= 12000 or abs(ay) >= 12000:
+                        image_pan_x -= int(ax / 1200)
+                        image_pan_y -= int(ay / 1200)
+                        last_axis_scroll = current_ticks
+                        needs_redraw = True
+                        break
+                elif image_zoom <= 0 and (current_ticks - last_axis_scroll > 200):
+                    if abs(ax) >= 15000:
+                        if ax < 0: # Left
+                            if len(book_images) > 0:
+                                current_image_idx = (current_image_idx - 1) % len(book_images)
+                                image_zoom = -1.0
+                                image_pan_x = 0
+                                image_pan_y = 0
+                                needs_redraw = True
+                        else: # Right
+                            if len(book_images) > 0:
+                                current_image_idx = (current_image_idx + 1) % len(book_images)
+                                image_zoom = -1.0
+                                image_pan_x = 0
+                                image_pan_y = 0
+                                needs_redraw = True
+                        last_axis_scroll = current_ticks
+                        break
                     
         for event in events:
             if event.type == sdl2.SDL_QUIT:
@@ -893,6 +1032,10 @@ def main():
                     dpad_up_held = False
                 elif btn == sdl2.SDL_CONTROLLER_BUTTON_DPAD_DOWN:
                     dpad_down_held = False
+                elif btn == sdl2.SDL_CONTROLLER_BUTTON_DPAD_LEFT:
+                    dpad_left_held = False
+                elif btn == sdl2.SDL_CONTROLLER_BUTTON_DPAD_RIGHT:
+                    dpad_right_held = False
             elif event.type == sdl2.SDL_CONTROLLERBUTTONDOWN:
                 btn = event.cbutton.button
                 if btn == sdl2.SDL_CONTROLLER_BUTTON_START:
@@ -910,40 +1053,65 @@ def main():
                     elif btn == sdl2.SDL_CONTROLLER_BUTTON_DPAD_DOWN:
                         dpad_down_held = True
                         dpad_timer = 0
+                    elif btn == sdl2.SDL_CONTROLLER_BUTTON_DPAD_LEFT:
+                        dpad_left_held = True
+                        dpad_horiz_timer = 0
+                    elif btn == sdl2.SDL_CONTROLLER_BUTTON_DPAD_RIGHT:
+                        dpad_right_held = True
+                        dpad_horiz_timer = 0
                     elif btn == sdl2.SDL_CONTROLLER_BUTTON_LEFTSHOULDER: # Page Up
-                        visible_items = 8
-                        sel_index = max(0, sel_index - visible_items)
-                        scroll_y = max(0, scroll_y - visible_items)
+                        page_jump = 8
+                        sel_index = max(0, sel_index - page_jump)
+                        if library_view_mode == "grid":
+                            scroll_y = (sel_index // 8) * 8
+                        else:
+                            scroll_y = max(0, scroll_y - page_jump)
+                        needs_redraw = True
                     elif btn == sdl2.SDL_CONTROLLER_BUTTON_RIGHTSHOULDER: # Page Down
-                        visible_items = 8
-                        sel_index = min(len(list_items) - 1, sel_index + visible_items)
-                        scroll_y = min(max(0, len(list_items) - visible_items), scroll_y + visible_items)
+                        page_jump = 8
+                        sel_index = min(len(list_items) - 1, sel_index + page_jump)
+                        if library_view_mode == "grid":
+                            scroll_y = (sel_index // 8) * 8
+                        else:
+                            scroll_y = min(max(0, len(list_items) - page_jump), scroll_y + page_jump)
+                        needs_redraw = True
                     elif btn == sdl2.SDL_CONTROLLER_BUTTON_X: # Physical Y - Theme Toggle
                         theme_idx = (theme_idx + 1) % len(THEMES)
                         write_theme_idx(theme_idx)
+                        needs_redraw = True
                     elif btn == sdl2.SDL_CONTROLLER_BUTTON_B: # Physical A - Enter
                         if len(list_items) > 0:
                             item = list_items[sel_index]
                             if item["name"] == "..":
+                                clear_cover_cache()
                                 current_path = os.path.dirname(current_path)
                                 folders, files = get_directory_contents(current_path)
                                 sel_index = 0
                                 scroll_y = 0
+                                needs_redraw = True
                             elif item["is_dir"]:
+                                clear_cover_cache()
                                 current_path = os.path.join(current_path, item["name"])
                                 folders, files = get_directory_contents(current_path)
                                 sel_index = 0
                                 scroll_y = 0
+                                needs_redraw = True
                             else:
                                 filepath = os.path.join(current_path, item["name"])
                                 if load_book(filepath):
                                     state = STATE_READER
-                    elif btn == sdl2.SDL_CONTROLLER_BUTTON_A: # Physical B - Back
-                        if current_path != base_path:
-                            current_path = os.path.dirname(current_path)
-                            folders, files = get_directory_contents(current_path)
-                            sel_index = 0
-                            scroll_y = 0
+                                    needs_redraw = True
+                    elif btn == sdl2.SDL_CONTROLLER_BUTTON_A: # Physical B - Toggle View Mode
+                        library_view_mode = "grid" if library_view_mode == "list" else "list"
+                        write_library_view(library_view_mode)
+                        if library_view_mode == "grid":
+                            scroll_y = (sel_index // 8) * 8
+                        else:
+                            if sel_index >= scroll_y + 8:
+                                scroll_y = max(0, sel_index - 7)
+                            elif sel_index < scroll_y:
+                                scroll_y = sel_index
+                        needs_redraw = True
                         
                 elif state == STATE_READER:
                     if btn == sdl2.SDL_CONTROLLER_BUTTON_DPAD_UP:
@@ -989,7 +1157,7 @@ def main():
                         show_hud = not show_hud
                         
                 elif state == STATE_TOC:
-                    if btn == sdl2.SDL_CONTROLLER_BUTTON_LEFTSHOULDER or btn == sdl2.SDL_CONTROLLER_BUTTON_RIGHTSHOULDER:
+                    if btn in (sdl2.SDL_CONTROLLER_BUTTON_LEFTSHOULDER, sdl2.SDL_CONTROLLER_BUTTON_RIGHTSHOULDER, sdl2.SDL_CONTROLLER_BUTTON_DPAD_LEFT, sdl2.SDL_CONTROLLER_BUTTON_DPAD_RIGHT):
                         if len(book_images) > 0:
                             toc_tab = 1 - toc_tab
                             needs_redraw = True
@@ -1069,6 +1237,8 @@ def main():
         # Key repeat logic for library (exact Files app behavior)
         is_up = dpad_up_held or axis_up
         is_down = dpad_down_held or axis_down
+        is_left = dpad_left_held or axis_left
+        is_right = dpad_right_held or axis_right
         
         if state == STATE_BROWSE:
             list_items = [{"name": "..", "is_dir": True}] if current_path != base_path else []
@@ -1076,32 +1246,94 @@ def main():
             list_items += [{"name": f, "is_dir": False} for f in files]
             library_visible_items = 8
             
-            if is_up:
-                if dpad_timer == 0 or (dpad_timer > 15 and dpad_timer % 3 == 0):
-                    if len(list_items) > 0:
-                        if sel_index == 0:
-                            sel_index = len(list_items) - 1
-                            scroll_y = max(0, len(list_items) - library_visible_items)
-                        else:
-                            sel_index -= 1
-                            if sel_index < scroll_y:
-                                scroll_y = sel_index
-                    needs_redraw = True
-                dpad_timer += 1
-            elif is_down:
-                if dpad_timer == 0 or (dpad_timer > 15 and dpad_timer % 3 == 0):
-                    if len(list_items) > 0:
-                        if sel_index == len(list_items) - 1:
-                            sel_index = 0
-                            scroll_y = 0
-                        else:
-                            sel_index += 1
-                            if sel_index >= scroll_y + library_visible_items:
-                                scroll_y = sel_index - library_visible_items + 1
-                    needs_redraw = True
-                dpad_timer += 1
+            if library_view_mode == "grid":
+                grid_cols = 4
+                if is_up:
+                    if dpad_timer == 0 or (dpad_timer > 15 and dpad_timer % 3 == 0):
+                        if len(list_items) > 0:
+                            if sel_index >= grid_cols:
+                                sel_index -= grid_cols
+                            else:
+                                sel_index = 0
+                            scroll_y = (sel_index // 8) * 8
+                        needs_redraw = True
+                    dpad_timer += 1
+                elif is_down:
+                    if dpad_timer == 0 or (dpad_timer > 15 and dpad_timer % 3 == 0):
+                        if len(list_items) > 0:
+                            if sel_index + grid_cols < len(list_items):
+                                sel_index += grid_cols
+                            else:
+                                sel_index = len(list_items) - 1
+                            scroll_y = (sel_index // 8) * 8
+                        needs_redraw = True
+                    dpad_timer += 1
+                else:
+                    dpad_timer = 0
+
+                if is_left:
+                    if dpad_horiz_timer == 0 or (dpad_horiz_timer > 15 and dpad_horiz_timer % 4 == 0):
+                        if len(list_items) > 0:
+                            sel_index = max(0, sel_index - 1)
+                            scroll_y = (sel_index // 8) * 8
+                        needs_redraw = True
+                    dpad_horiz_timer += 1
+                elif is_right:
+                    if dpad_horiz_timer == 0 or (dpad_horiz_timer > 15 and dpad_horiz_timer % 4 == 0):
+                        if len(list_items) > 0:
+                            sel_index = min(len(list_items) - 1, sel_index + 1)
+                            scroll_y = (sel_index // 8) * 8
+                        needs_redraw = True
+                    dpad_horiz_timer += 1
+                else:
+                    dpad_horiz_timer = 0
             else:
-                dpad_timer = 0
+                if is_up:
+                    if dpad_timer == 0 or (dpad_timer > 15 and dpad_timer % 3 == 0):
+                        if len(list_items) > 0:
+                            if sel_index == 0:
+                                sel_index = len(list_items) - 1
+                                scroll_y = max(0, len(list_items) - library_visible_items)
+                            else:
+                                sel_index -= 1
+                                if sel_index < scroll_y:
+                                    scroll_y = sel_index
+                        needs_redraw = True
+                    dpad_timer += 1
+                elif is_down:
+                    if dpad_timer == 0 or (dpad_timer > 15 and dpad_timer % 3 == 0):
+                        if len(list_items) > 0:
+                            if sel_index == len(list_items) - 1:
+                                sel_index = 0
+                                scroll_y = 0
+                            else:
+                                sel_index += 1
+                                if sel_index >= scroll_y + library_visible_items:
+                                    scroll_y = sel_index - library_visible_items + 1
+                        needs_redraw = True
+                    dpad_timer += 1
+                else:
+                    dpad_timer = 0
+
+                if is_left:
+                    if dpad_horiz_timer == 0 or (dpad_horiz_timer > 15 and dpad_horiz_timer % 4 == 0):
+                        sel_index = max(0, sel_index - library_visible_items)
+                        scroll_y = max(0, scroll_y - library_visible_items)
+                        needs_redraw = True
+                    dpad_horiz_timer += 1
+                elif is_right:
+                    if dpad_horiz_timer == 0 or (dpad_horiz_timer > 15 and dpad_horiz_timer % 4 == 0):
+                        sel_index = min(len(list_items) - 1, sel_index + library_visible_items)
+                        scroll_y = min(max(0, len(list_items) - library_visible_items), scroll_y + library_visible_items)
+                        needs_redraw = True
+                    dpad_horiz_timer += 1
+                else:
+                    dpad_horiz_timer = 0
+
+            if prev_sel_index != sel_index:
+                sel_time = current_ticks
+                prev_sel_index = sel_index
+
         elif state == STATE_TOC:
             if toc_tab == 0:
                 if is_up:
@@ -1133,10 +1365,24 @@ def main():
                     dpad_timer += 1
                 else:
                     dpad_timer = 0
+
+            # Horizontal switch tabs in TOC
+            if is_left or is_right:
+                if dpad_horiz_timer == 0:
+                    if len(book_images) > 0:
+                        toc_tab = 1 - toc_tab
+                        needs_redraw = True
+                dpad_horiz_timer += 1
+            else:
+                dpad_horiz_timer = 0
+
         elif state != STATE_READER and state != STATE_IMAGE_VIEW:
             dpad_up_held = False
             dpad_down_held = False
+            dpad_left_held = False
+            dpad_right_held = False
             dpad_timer = 0
+            dpad_horiz_timer = 0
 
         if needs_redraw:
             theme = THEMES[theme_idx]
@@ -1160,60 +1406,205 @@ def main():
                 list_items += [{"name": f, "is_dir": True} for f in folders]
                 list_items += [{"name": f, "is_dir": False} for f in files]
 
-                library_visible_items = 8
-                book_count = f"{len(files)} BOOK" + ("" if len(files) == 1 else "S")
+                mode_str = "[GRID]" if library_view_mode == "grid" else "[LIST]"
+                book_count = f"{len(files)} BOOK" + ("" if len(files) == 1 else "S") + f"    {mode_str}"
                 tex, tw, th = render_text(book_count, font_small, library_theme["secondary"])
                 if tex:
                     sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(SCREEN_W - 32 - tw, 27, tw, th))
                     sdl2.SDL_DestroyTexture(tex)
 
-                start_idx = scroll_y
-                end_idx = min(len(list_items), start_idx + library_visible_items)
-                
                 sel_border = library_theme.get("sel_border", sdl2.ext.Color(102, 137, 181))
                 sel_bg = library_theme.get("sel_bg", sdl2.ext.Color(229, 235, 241))
                 sel_text = library_theme.get("sel_text", sdl2.SDL_Color(30, 30, 30, 255))
                 sel_sec = library_theme.get("sel_sec", sdl2.SDL_Color(80, 80, 80, 255))
+                marquee_active = False
 
-                y_start = 86
-                row_h = 74
-                for i in range(start_idx, end_idx):
-                    item = list_items[i]
-                    iy = y_start + (i - start_idx) * row_h
-                    
-                    text_col = sel_text if i == sel_index else library_theme["text"]
-                    sec_col = sel_sec if i == sel_index else library_theme["secondary"]
-                    
-                    if i == sel_index:
-                        sel_x, sel_y, sel_w, sel_h = 20, iy, SCREEN_W - 40, 68
-                        renderer.fill((sel_x, sel_y, sel_w, sel_h), sel_border)
-                        renderer.fill((sel_x + 2, sel_y + 2, sel_w - 4, sel_h - 4), sel_bg)
+                if library_view_mode == "grid":
+                    grid_page = sel_index // 8
+                    start_idx = grid_page * 8
+                    end_idx = min(len(list_items), start_idx + 8)
 
-                    if item["is_dir"]:
-                        renderer.fill((42, iy + 18, 18, 14), library_theme["accent"])
-                        renderer.fill((44, iy + 15, 9, 4), library_theme["accent"])
-                        tex, tw, th = render_text(item["name"], font_ui_medium, text_col)
-                        if tex:
-                            sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(78, iy + 13, min(tw, SCREEN_W - 110), th))
-                            sdl2.SDL_DestroyTexture(tex)
-                    else:
-                        title, author = get_book_display_metadata(item["name"])
-                        icon_bg = sel_bg if i == sel_index else library_theme["bg"]
-                        draw_book_icon(renderer, 42, iy + 16, library_theme["accent"], icon_bg)
-                        sdlttf.TTF_SetFontStyle(font_ui_medium, sdlttf.TTF_STYLE_BOLD)
-                        tex, tw, th = render_text(title, font_ui_medium, text_col)
-                        sdlttf.TTF_SetFontStyle(font_ui_medium, sdlttf.TTF_STYLE_NORMAL)
-                        if tex:
-                            sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(78, iy + 4, min(tw, SCREEN_W - 110), th))
-                            sdl2.SDL_DestroyTexture(tex)
-                        if author:
-                            tex, tw, th = render_text(author, font_small, sec_col)
-                            if tex:
-                                sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(78, iy + 37, min(tw, SCREEN_W - 110), th))
-                                sdl2.SDL_DestroyTexture(tex)
+                    col_w = 232
+                    row_h = 286
+                    start_x = 24
+                    start_y = 96
+                    gap_x = 16
+                    gap_y = 16
+
+                    for idx in range(start_idx, end_idx):
+                        rel_i = idx - start_idx
+                        col = rel_i % 4
+                        row = rel_i // 4
+                        cx = start_x + col * (col_w + gap_x)
+                        cy = start_y + row * (row_h + gap_y)
+
+                        item = list_items[idx]
+                        is_sel = (idx == sel_index)
+
+                        if is_sel:
+                            renderer.fill((cx, cy, col_w, row_h), sel_border)
+                            renderer.fill((cx + 2, cy + 2, col_w - 4, row_h - 4), sel_bg)
+                            card_text_col = sel_text
+                        else:
+                            renderer.fill((cx, cy, col_w, row_h), library_theme["divider"])
+                            renderer.fill((cx + 1, cy + 1, col_w - 2, row_h - 2), library_theme["header"])
+                            card_text_col = library_theme["text"]
+
+                        cover_w, cover_h = 170, 200
+                        cover_x = cx + (col_w - cover_w) // 2
+                        cover_y = cy + 14
+
+                        if item["is_dir"]:
+                            renderer.fill((cover_x, cover_y, cover_w, cover_h), library_theme["bg"])
+                            if item["name"] == "..":
+                                renderer.fill((cover_x + 50, cover_y + 80, 70, 40), library_theme["accent"])
+                                renderer.fill((cover_x + 52, cover_y + 82, 66, 36), library_theme["bg"])
+                                t_back, bw, bh = render_text("BACK", font_small, library_theme["accent"])
+                                if t_back:
+                                    sdl2.SDL_RenderCopy(renderer.sdlrenderer, t_back, None, sdl2.SDL_Rect(cover_x + (cover_w - bw) // 2, cover_y + 90, bw, bh))
+                                    sdl2.SDL_DestroyTexture(t_back)
+                            else:
+                                fx = cover_x + (cover_w - 90) // 2
+                                fy = cover_y + 60
+                                renderer.fill((fx, fy - 12, 45, 14), library_theme["accent"])
+                                renderer.fill((fx, fy, 90, 65), library_theme["accent"])
+                                renderer.fill((fx + 3, fy + 3, 84, 59), library_theme["bg"])
+                                t_dir, dw, dh = render_text("FOLDER", font_small, library_theme["accent"])
+                                if t_dir:
+                                    sdl2.SDL_RenderCopy(renderer.sdlrenderer, t_dir, None, sdl2.SDL_Rect(cover_x + (cover_w - dw) // 2, fy + 20, dw, dh))
+                                    sdl2.SDL_DestroyTexture(t_dir)
+                        else:
+                            filepath = os.path.join(current_path, item["name"])
+                            ext = os.path.splitext(item["name"])[1].lower()
+                            c_tex, orig_w, orig_h = get_cover_texture(filepath)
+                            if c_tex and orig_w > 0 and orig_h > 0:
+                                scale = min(cover_w / float(orig_w), cover_h / float(orig_h))
+                                dw = int(orig_w * scale)
+                                dh = int(orig_h * scale)
+                                tx = cover_x + (cover_w - dw) // 2
+                                ty = cover_y + (cover_h - dh) // 2
+                                renderer.fill((tx - 1, ty - 1, dw + 2, dh + 2), library_theme["divider"])
+                                sdl2.SDL_RenderCopy(renderer.sdlrenderer, c_tex, None, sdl2.SDL_Rect(tx, ty, dw, dh))
+                            else:
+                                renderer.fill((cover_x, cover_y, cover_w, cover_h), library_theme["bg"])
+                                renderer.fill((cover_x + 2, cover_y + 2, cover_w - 4, cover_h - 4), library_theme["header"])
+                                renderer.fill((cover_x + 14, cover_y + 2, 2, cover_h - 4), library_theme["divider"])
+                                draw_book_icon(renderer, cover_x + (cover_w - 15) // 2 + 5, cover_y + 65, library_theme["accent"], library_theme["header"])
+                                badge_str = ext.upper().lstrip('.') if ext else "BOOK"
+                                t_badge, bw, bh = render_text(f"[ {badge_str} ]", font_small, library_theme["secondary"])
+                                if t_badge:
+                                    sdl2.SDL_RenderCopy(renderer.sdlrenderer, t_badge, None, sdl2.SDL_Rect(cover_x + (cover_w - bw) // 2 + 5, cover_y + 115, bw, bh))
+                                    sdl2.SDL_DestroyTexture(t_badge)
+
+                        title, _ = get_book_display_metadata(item["name"]) if not item["is_dir"] else (item["name"], "")
+                        sdlttf.TTF_SetFontStyle(font_small, sdlttf.TTF_STYLE_BOLD if is_sel else sdlttf.TTF_STYLE_NORMAL)
+                        tex_title, tw, th = render_text(title, font_small, card_text_col)
+                        sdlttf.TTF_SetFontStyle(font_small, sdlttf.TTF_STYLE_NORMAL)
+                        if tex_title:
+                            title_y = cy + 236
+                            max_title_w = col_w - 16
+                            if tw > max_title_w and is_sel:
+                                marquee_active = True
+                                overflow = tw - max_title_w
+                                dt = current_ticks - sel_time
+                                pause_start = 1200
+                                speed = 0.04
+                                scroll_time = int(overflow / speed)
+                                pause_end = 1200
+                                total_cycle = pause_start + scroll_time + pause_end + scroll_time
+                                cycle_pos = dt % total_cycle
+                                if cycle_pos < pause_start:
+                                    offset = 0
+                                elif cycle_pos < pause_start + scroll_time:
+                                    offset = int((cycle_pos - pause_start) * speed)
+                                elif cycle_pos < pause_start + scroll_time + pause_end:
+                                    offset = overflow
+                                else:
+                                    back_t = cycle_pos - (pause_start + scroll_time + pause_end)
+                                    offset = overflow - int(back_t * speed)
+                                offset = max(0, min(overflow, offset))
+                                src = sdl2.SDL_Rect(offset, 0, max_title_w, th)
+                                dst = sdl2.SDL_Rect(cx + 8, title_y, max_title_w, th)
+                                sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_title, src, dst)
+                            else:
+                                dw = min(tw, max_title_w)
+                                tx = cx + (col_w - dw) // 2
+                                src = sdl2.SDL_Rect(0, 0, dw, th)
+                                dst = sdl2.SDL_Rect(tx, title_y, dw, th)
+                                sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_title, src, dst)
+                            sdl2.SDL_DestroyTexture(tex_title)
+                else:
+                    library_visible_items = 8
+                    start_idx = scroll_y
+                    end_idx = min(len(list_items), start_idx + library_visible_items)
+
+                    def draw_label(tex, tw, th, y_pos, is_sel):
+                        nonlocal marquee_active
+                        max_w = SCREEN_W - 110
+                        overflow = tw - max_w
+                        if overflow > 0 and is_sel:
+                            marquee_active = True
+                            dt = current_ticks - sel_time
+                            pause_start = 1200
+                            speed = 0.04
+                            scroll_time = int(overflow / speed)
+                            pause_end = 1200
+                            total_cycle = pause_start + scroll_time + pause_end + scroll_time
+                            cycle_pos = dt % total_cycle
+                            if cycle_pos < pause_start:
+                                offset = 0
+                            elif cycle_pos < pause_start + scroll_time:
+                                offset = int((cycle_pos - pause_start) * speed)
+                            elif cycle_pos < pause_start + scroll_time + pause_end:
+                                offset = overflow
+                            else:
+                                back_t = cycle_pos - (pause_start + scroll_time + pause_end)
+                                offset = overflow - int(back_t * speed)
+                            offset = max(0, min(overflow, offset))
+                            src = sdl2.SDL_Rect(offset, 0, max_w, th)
+                            dst = sdl2.SDL_Rect(78, y_pos, max_w, th)
+                            sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, src, dst)
+                        else:
+                            draw_w = min(tw, max_w)
+                            src = sdl2.SDL_Rect(0, 0, draw_w, th)
+                            dst = sdl2.SDL_Rect(78, y_pos, draw_w, th)
+                            sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, src, dst)
+
+                    y_start = 86
+                    row_h = 74
+                    for i in range(start_idx, end_idx):
+                        item = list_items[i]
+                        iy = y_start + (i - start_idx) * row_h
                         
+                        text_col = sel_text if i == sel_index else library_theme["text"]
+                        
+                        if i == sel_index:
+                            sel_x, sel_y, sel_w, sel_h = 20, iy, SCREEN_W - 40, 68
+                            renderer.fill((sel_x, sel_y, sel_w, sel_h), sel_border)
+                            renderer.fill((sel_x + 2, sel_y + 2, sel_w - 4, sel_h - 4), sel_bg)
+
+                        if item["is_dir"]:
+                            renderer.fill((44, iy + 21, 9, 4), library_theme["accent"])
+                            renderer.fill((42, iy + 24, 18, 14), library_theme["accent"])
+                            tex, tw, th = render_text(item["name"], font_ui_medium, text_col)
+                            if tex:
+                                title_y = iy + 16
+                                draw_label(tex, tw, th, title_y, i == sel_index)
+                                sdl2.SDL_DestroyTexture(tex)
+                        else:
+                            title, _ = get_book_display_metadata(item["name"])
+                            icon_bg = sel_bg if i == sel_index else library_theme["bg"]
+                            draw_book_icon(renderer, 42, iy + 23, library_theme["accent"], icon_bg)
+                            sdlttf.TTF_SetFontStyle(font_ui_medium, sdlttf.TTF_STYLE_BOLD)
+                            tex, tw, th = render_text(title, font_ui_medium, text_col)
+                            sdlttf.TTF_SetFontStyle(font_ui_medium, sdlttf.TTF_STYLE_NORMAL)
+                            if tex:
+                                title_y = iy + 16
+                                draw_label(tex, tw, th, title_y, i == sel_index)
+                                sdl2.SDL_DestroyTexture(tex)
+
                 renderer.fill((0, SCREEN_H - 58, SCREEN_W, 1), library_theme["divider"])
-                footer = "A: Open    B: Back    Y: Theme    [START] Exit"
+                footer = f"A: Open    B: {'List View' if library_view_mode == 'grid' else 'Grid View'}    Y: Theme    [START] Exit"
                 tex, tw, th = render_text(footer, font_small, library_theme["secondary"])
                 if tex:
                     sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(32, SCREEN_H - 38, tw, th))
@@ -1442,7 +1833,9 @@ def main():
                 renderer.fill((pop_x+2, pop_y+2, pop_w-4, pop_h-4), theme["header"])
                 
                 msg = "Exit RetroRead?"
+                sdlttf.TTF_SetFontStyle(font_large, sdlttf.TTF_STYLE_BOLD)
                 tex, tw, th = render_text(msg, font_large, theme["text"])
+                sdlttf.TTF_SetFontStyle(font_large, sdlttf.TTF_STYLE_NORMAL)
                 if tex:
                     sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(pop_x + pop_w//2 - tw//2, pop_y + 40, tw, th))
                     sdl2.SDL_DestroyTexture(tex)
@@ -1471,9 +1864,12 @@ def main():
 
             renderer.present()
             needs_redraw = False
+            if marquee_active and render_state == STATE_BROWSE:
+                needs_redraw = True
             
         sdl2.SDL_Delay(16)
 
+    clear_cover_cache()
     if font_medium:
         sdlttf.TTF_CloseFont(font_medium)
     if reader_target:
