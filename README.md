@@ -1,6 +1,6 @@
 # RetroRead App
 
-Một ứng dụng đọc tài liệu (RetroRead) mã nguồn mở, được tối ưu hóa đặc biệt cho thiết bị cầm tay (như Trimui Brick Pro).
+Một ứng dụng đọc sách (RetroRead) mã nguồn mở, được tối ưu hóa đặc biệt cho Trimui Brick Pro.
 
 ## 🌟 Tính năng chính (Cập nhật v1.1)
 - Hỗ trợ đa dạng định dạng Ebook phổ biến: **EPUB, MOBI, AZW3, AZW, FB2, TXT**.
