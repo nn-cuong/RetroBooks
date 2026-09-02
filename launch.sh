@@ -7,24 +7,19 @@ export SDL_NOMOUSE=1
 cd $APP_DIR
 
 PY=""
-# 1. Try shared Python first (Fast boot from RAM)
-for c in \
-    "/mnt/SDCARD/.retrohub/python/bin/python3" \
-    "/mnt/SDCARD/Apps/RetroHub/python/bin/python3" \
-    "/mnt/SDCARD/System/bin/python3" \
-    "/usr/bin/python3"
-do
-    if [ -x "$c" ]; then
-        PY="$c"
-        break
-    fi
-done
+# 1. Bundled Python in App
+if [ -x "$APP_DIR/python/bin/python3" ]; then
+    PY="$APP_DIR/python/bin/python3"
+fi
 
-# 2. Fallback to bundled Python
+# 2. Fallback to System Python
 if [ -z "$PY" ]; then
-    if [ -x "$APP_DIR/python/bin/python3" ]; then
-        PY="$APP_DIR/python/bin/python3"
-    fi
+    for c in "/mnt/SDCARD/System/bin/python3" "/usr/bin/python3"; do
+        if [ -x "$c" ]; then
+            PY="$c"
+            break
+        fi
+    done
 fi
 
 if [ -z "$PY" ]; then
