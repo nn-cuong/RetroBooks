@@ -887,6 +887,23 @@ def main():
                 return img_path
         return None
 
+    def find_image_reader_line(target_img_path):
+        if not target_img_path or not reader_lines:
+            return None
+        target_clean = os.path.basename(target_img_path.split('?')[0].split('#')[0]).lower()
+        for line_idx, line in enumerate(reader_lines):
+            if isinstance(line, dict) and line.get("type") == "image":
+                src = line.get("src", "")
+                if src == target_img_path:
+                    return line_idx
+                resolved = find_image_key(src)
+                if resolved == target_img_path:
+                    return line_idx
+                clean_src = os.path.basename(src.split('?')[0].split('#')[0]).lower()
+                if clean_src == target_clean:
+                    return line_idx
+        return None
+
     def get_inline_image(img_src, max_w, max_h):
         nonlocal inline_image_cache
         resolved = find_image_key(img_src)
@@ -1434,19 +1451,28 @@ def main():
                     elif btn == sdl2.SDL_CONTROLLER_BUTTON_DPAD_RIGHT:
                         dpad_right_held = True
                         dpad_horiz_timer = 0
-                    elif btn == sdl2.SDL_CONTROLLER_BUTTON_B: # Physical A - Select
+                    elif btn == sdl2.SDL_CONTROLLER_BUTTON_B: # Physical A - Select Chapter or Jump to Image
                         if toc_tab == 0:
                             if len(chapter_offsets) > 0:
                                 reader_scroll_y = chapter_offsets[toc_sel_index][1]
                             state = STATE_READER
                         else:
+                            # Tab 1: Jump directly to image position in reading mode
                             if len(book_images) > 0:
-                                current_image_idx = toc_img_sel_index
-                                state = STATE_IMAGE_VIEW
-                                image_zoom = -1.0
-                                image_pan_x = 0
-                                image_pan_y = 0
+                                target_img = book_images[toc_img_sel_index]
+                                target_line = find_image_reader_line(target_img)
+                                if target_line is not None:
+                                    reader_scroll_y = max(0, min(target_line, len(reader_lines) - 1))
+                            state = STATE_READER
                         needs_redraw = True
+                    elif btn == sdl2.SDL_CONTROLLER_BUTTON_Y: # Physical X - View Image Fullscreen
+                        if toc_tab == 1 and len(book_images) > 0:
+                            current_image_idx = toc_img_sel_index
+                            state = STATE_IMAGE_VIEW
+                            image_zoom = -1.0
+                            image_pan_x = 0
+                            image_pan_y = 0
+                            needs_redraw = True
                     elif btn in (sdl2.SDL_CONTROLLER_BUTTON_A, sdl2.SDL_CONTROLLER_BUTTON_BACK): # Physical B or Select - Back to Reader
                         state = STATE_READER
                         needs_redraw = True
@@ -2101,7 +2127,7 @@ def main():
                             sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_lbl, None, sdl2.SDL_Rect(cell_x + (thumb_w - min(lw, thumb_w))//2, cell_y + thumb_h + 6, min(lw, thumb_w), lh))
                             sdl2.SDL_DestroyTexture(tex_lbl)
 
-                    footer = "D-Pad / Sticks: Move   |   A: View Fullscreen   |   L1/R1: Switch Tab   |   B: Cancel"
+                    footer = "D-Pad / Sticks: Move   |   A: Jump to Text   |   X: Fullscreen   |   L1/R1: Tab   |   B: Cancel"
 
                 tex, tw, th = render_text(footer, font_small, theme["text"])
                 if tex:
