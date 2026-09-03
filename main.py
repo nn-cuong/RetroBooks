@@ -1038,11 +1038,18 @@ def main():
                     dpad_right_held = False
             elif event.type == sdl2.SDL_CONTROLLERBUTTONDOWN:
                 btn = event.cbutton.button
-                if btn == sdl2.SDL_CONTROLLER_BUTTON_START:
+                if state == STATE_QUIT_CONFIRM:
+                    if btn == sdl2.SDL_CONTROLLER_BUTTON_B: # Physical A (Confirm)
+                        if state_before_quit in (STATE_READER, STATE_TOC, STATE_IMAGE_VIEW):
+                            write_save(current_filepath, reader_scroll_y, current_font_size)
+                        running = False
+                    elif btn in (sdl2.SDL_CONTROLLER_BUTTON_A, sdl2.SDL_CONTROLLER_BUTTON_START): # Physical B or START (Cancel)
+                        state = state_before_quit
+                elif btn == sdl2.SDL_CONTROLLER_BUTTON_START:
                     state_before_quit = state
                     state = STATE_QUIT_CONFIRM
                     
-                if state == STATE_BROWSE:
+                elif state == STATE_BROWSE:
                     list_items = [{"name": "..", "is_dir": True}] if current_path != base_path else []
                     list_items += [{"name": f, "is_dir": True} for f in folders]
                     list_items += [{"name": f, "is_dir": False} for f in files]
@@ -1225,14 +1232,6 @@ def main():
                         if image_zoom > 0:
                             image_pan_y -= 60
                             needs_redraw = True
-                        
-                elif state == STATE_QUIT_CONFIRM:
-                    if btn == sdl2.SDL_CONTROLLER_BUTTON_B: # Physical A (Confirm)
-                        if state_before_quit in (STATE_READER, STATE_TOC, STATE_IMAGE_VIEW):
-                            write_save(current_filepath, reader_scroll_y, current_font_size)
-                        running = False
-                    elif btn == sdl2.SDL_CONTROLLER_BUTTON_A: # Physical B (Cancel)
-                        state = state_before_quit
 
         # Key repeat logic for library (exact Files app behavior)
         is_up = dpad_up_held or axis_up
