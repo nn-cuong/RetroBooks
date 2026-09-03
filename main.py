@@ -1142,25 +1142,25 @@ def main():
             ax = lx if abs(lx) >= abs(rx) else rx
             ay = ly if abs(ly) >= abs(ry) else ry
 
-            if abs(lx) < 10000 and abs(ly) < 10000 and abs(rx) < 10000 and abs(ry) < 10000:
+            if abs(lx) < 8000 and abs(ly) < 8000 and abs(rx) < 8000 and abs(ry) < 8000:
                 left_axis_held = False
                 right_axis_held = False
 
-            if abs(ay) >= 15000 and abs(ay) >= abs(ax):
+            if abs(ay) >= 12000 and abs(ay) >= abs(ax):
                 if ay < 0:
                     axis_up = True
                 else:
                     axis_down = True
-            elif abs(ax) >= 15000 and abs(ax) > abs(ay):
+            elif abs(ax) >= 12000 and abs(ax) > abs(ay):
                 if ax < 0:
                     axis_left = True
                 else:
                     axis_right = True
 
-            # Dedicated Joystick Axis handling for STATE_TOC (100ms smooth responsiveness matching Right Stick)
+            # Dedicated Joystick Axis handling for STATE_TOC (Fast 50ms repeat rate, highly sensitive)
             if state == STATE_TOC:
-                if not left_axis_held or (current_ticks - last_left_axis_time > 100):
-                    if abs(ay) >= 15000 and abs(ay) >= abs(ax):
+                if not left_axis_held or (current_ticks - last_left_axis_time > 50):
+                    if abs(ay) >= 12000 and abs(ay) >= abs(ax):
                         if toc_tab == 0:
                             # Tab 0: Chapter List (Up/Down 1 item)
                             if len(chapter_offsets) > 0:
@@ -1188,7 +1188,7 @@ def main():
                         left_axis_held = True
                         last_left_axis_time = current_ticks
                         break
-                    elif abs(ax) >= 15000 and abs(ax) > abs(ay):
+                    elif abs(ax) >= 12000 and abs(ax) > abs(ay):
                         if toc_tab == 0:
                             # Tab 0: Jump 8 chapters
                             if len(chapter_offsets) > 0:
