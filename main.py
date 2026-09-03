@@ -21,27 +21,74 @@ def log_debug(msg):
 SAVES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "saves.json")
 SETTINGS_KEY = "__retroread_settings__"
 
+def load_typography_settings():
+    settings = load_settings()
+    try:
+        font_size = int(settings.get("font_size", 34))
+        line_spacing = float(settings.get("line_spacing", 1.32))
+        word_spacing = float(settings.get("word_spacing", 1.0))
+        margin_side = int(settings.get("margin_side", 20))
+        return {
+            "font_size": font_size,
+            "line_spacing": line_spacing,
+            "word_spacing": word_spacing,
+            "margin_side": margin_side
+        }
+    except:
+        return {
+            "font_size": 34,
+            "line_spacing": 1.32,
+            "word_spacing": 1.0,
+            "margin_side": 20
+        }
+
+def write_typography_settings(font_size, line_spacing, word_spacing, margin_side):
+    write_settings({
+        "font_size": font_size,
+        "line_spacing": line_spacing,
+        "word_spacing": word_spacing,
+        "margin_side": margin_side
+    })
+
 def load_save(filepath):
+    typo = load_typography_settings()
     try:
         with open(SAVES_FILE, 'r') as f:
             saves = json.load(f)
-        return saves.get(filepath, {"scroll_y": 0, "font_size": 34, "line_spacing": 1.32, "word_spacing": 1.0, "margin_side": 20})
+        book_save = saves.get(filepath, {})
+        return {
+            "scroll_y": book_save.get("scroll_y", 0),
+            "font_size": typo["font_size"],
+            "line_spacing": typo["line_spacing"],
+            "word_spacing": typo["word_spacing"],
+            "margin_side": typo["margin_side"]
+        }
     except:
-        return {"scroll_y": 0, "font_size": 34, "line_spacing": 1.32, "word_spacing": 1.0, "margin_side": 20}
+        return {
+            "scroll_y": 0,
+            "font_size": typo["font_size"],
+            "line_spacing": typo["line_spacing"],
+            "word_spacing": typo["word_spacing"],
+            "margin_side": typo["margin_side"]
+        }
 
-def write_save(filepath, scroll_y, font_size, line_spacing=1.32, word_spacing=1.0, margin_side=20):
+def write_save(filepath, scroll_y, font_size=None, line_spacing=None, word_spacing=None, margin_side=None):
     try:
         saves = {}
         if os.path.exists(SAVES_FILE):
             with open(SAVES_FILE, 'r') as f:
                 saves = json.load(f)
         saves[filepath] = {
-            "scroll_y": scroll_y,
-            "font_size": font_size,
-            "line_spacing": line_spacing,
-            "word_spacing": word_spacing,
-            "margin_side": margin_side
+            "scroll_y": scroll_y
         }
+        if font_size is not None:
+            settings = saves.get(SETTINGS_KEY, {})
+            settings["font_size"] = font_size
+            if line_spacing is not None: settings["line_spacing"] = line_spacing
+            if word_spacing is not None: settings["word_spacing"] = word_spacing
+            if margin_side is not None: settings["margin_side"] = margin_side
+            saves[SETTINGS_KEY] = settings
+            
         with open(SAVES_FILE, 'w') as f:
             json.dump(saves, f)
     except:
@@ -1283,10 +1330,11 @@ def main():
         
         save_data = load_save(filepath)
         reader_scroll_y = save_data.get("scroll_y", 0)
-        current_font_size = save_data.get("font_size", 34)
-        line_spacing_mult = float(save_data.get("line_spacing", 1.32))
-        word_spacing_mult = float(save_data.get("word_spacing", 1.0))
-        margin_side = int(save_data.get("margin_side", 20))
+        typo = load_typography_settings()
+        current_font_size = typo["font_size"]
+        line_spacing_mult = float(typo["line_spacing"])
+        word_spacing_mult = float(typo["word_spacing"])
+        margin_side = int(typo["margin_side"])
         show_typography_popup = False
         typography_sel_idx = 0
         image_view_source = "reader"
@@ -1717,9 +1765,11 @@ def main():
                                 reader_scroll_y = max(0, min(reader_scroll_y, len(reader_lines) - lines_per_page))
                             needs_redraw = True
                         elif btn == sdl2.SDL_CONTROLLER_BUTTON_B: # Physical A: Save
+                            write_typography_settings(current_font_size, line_spacing_mult, word_spacing_mult, margin_side)
+                            write_theme_idx(theme_idx)
                             show_typography_popup = False
                             save_current_reader_state()
-                            toast_msg = "Saved Typography Settings"
+                            toast_msg = "Saved Typography for All Books"
                             toast_timer = current_ticks
                             needs_redraw = True
                         elif btn in (sdl2.SDL_CONTROLLER_BUTTON_A, sdl2.SDL_CONTROLLER_BUTTON_BACK): # Physical B / Select: Cancel
@@ -1743,11 +1793,13 @@ def main():
                             handle_reader_direction(1, 0)
                         elif btn == sdl2.SDL_CONTROLLER_BUTTON_LEFTSHOULDER: # Decrease Font
                             current_font_size = max(20, current_font_size - 2)
+                            write_typography_settings(current_font_size, line_spacing_mult, word_spacing_mult, margin_side)
                             recalculate_layout()
                             if reader_lines:
                                 reader_scroll_y = max(0, min(reader_scroll_y, len(reader_lines) - lines_per_page))
                         elif btn == sdl2.SDL_CONTROLLER_BUTTON_RIGHTSHOULDER: # Increase Font
                             current_font_size = min(60, current_font_size + 2)
+                            write_typography_settings(current_font_size, line_spacing_mult, word_spacing_mult, margin_side)
                             recalculate_layout()
                             if reader_lines:
                                 reader_scroll_y = max(0, min(reader_scroll_y, len(reader_lines) - lines_per_page))
