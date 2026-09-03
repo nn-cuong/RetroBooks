@@ -778,11 +778,11 @@ def main():
     def rotate_reader_direction(dx, dy):
         rot = reader_rotation_idx % 4
         if rot == 1:
-            return -dy, dx
+            return dy, -dx
         elif rot == 2:
             return -dx, -dy
         elif rot == 3:
-            return dy, -dx
+            return -dy, dx
         return dx, dy
 
     def handle_reader_direction(dx, dy):
