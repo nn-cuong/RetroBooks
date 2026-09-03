@@ -345,6 +345,63 @@ def process_inline_footnotes(text):
             
     return "\n\n".join(body_paras)
 
+def clean_html_to_clean_text(html_str):
+    if not html_str:
+        return ""
+    import re
+    import html
+    
+    # 1. Replace image tags with structured inline image markers
+    def img_tag_sub(m):
+        src = m.group(1).split('?')[0].split('#')[0].strip()
+        return f"\n\n[[INLINE_IMAGE:{src}]]\n\n"
+    html_str = re.sub(r'<(?:img|image)[^>]+(?:src|href|xlink:href)=[\x27\x22]([^\x27\x22]+)[\x27\x22][^>]*>', img_tag_sub, html_str, flags=re.IGNORECASE)
+    
+    # 2. Strip <head>...</head> (contains meta tags, stylesheets, scripts)
+    html_str = re.sub(r'<head[^>]*>.*?</head>', '', html_str, flags=re.DOTALL | re.IGNORECASE)
+    
+    # 3. Strip <style>...</style> and <script>...</script>
+    html_str = re.sub(r'<style[^>]*>.*?</style>', '', html_str, flags=re.DOTALL | re.IGNORECASE)
+    html_str = re.sub(r'<script[^>]*>.*?</script>', '', html_str, flags=re.DOTALL | re.IGNORECASE)
+    
+    # 4. Strip XML processing instructions and comments
+    html_str = re.sub(r'<\?xml.*?\?>', '', html_str, flags=re.DOTALL | re.IGNORECASE)
+    html_str = re.sub(r'<!--.*?-->', '', html_str, flags=re.DOTALL | re.IGNORECASE)
+    
+    # 5. Convert block tags to newlines
+    html_str = re.sub(r'<(p|br|div|h[1-6]|li|tr|td|th|blockquote|section|article)[^>]*>', '\n', html_str, flags=re.IGNORECASE)
+    
+    # 6. Strip all remaining HTML tags
+    html_str = re.sub(r'<[^>]+>', '', html_str)
+    
+    # 7. Unescape HTML entities
+    html_str = html.unescape(html_str)
+    html_str = html_str.replace('\xa0', ' ')
+    
+    # 8. Clean up junk metadata lines (Calibre metadata, CSS residue, UUIDs, ISBNs)
+    clean_lines = []
+    metadata_patterns = [
+        re.compile(r'^calibre:.*', re.IGNORECASE),
+        re.compile(r'^@page\s*\{.*', re.IGNORECASE),
+        re.compile(r'^\.[a-zA-Z0-9_-]+\s*\{.*', re.IGNORECASE),
+        re.compile(r'^(?:urn:)?uuid:[0-9a-fA-F-]+', re.IGNORECASE),
+        re.compile(r'^(?:file|ebook)\s+generated\s+by\s+.*', re.IGNORECASE),
+        re.compile(r'^body\s*\{.*', re.IGNORECASE),
+        re.compile(r'^\s*\{\s*margin[^}]*\}', re.IGNORECASE),
+    ]
+    for line in html_str.split('\n'):
+        l_str = line.strip()
+        if not l_str:
+            clean_lines.append("")
+            continue
+        is_junk = any(p.match(l_str) for p in metadata_patterns)
+        if not is_junk:
+            clean_lines.append(line)
+            
+    res_text = "\n".join(clean_lines)
+    res_text = re.sub(r'\n{3,}', '\n\n', res_text).strip()
+    return res_text
+
 class Chapter:
     def __init__(self, title, content):
         self.title = title
@@ -426,21 +483,11 @@ class EPUBParser:
                         try:
                             html_bytes = zf.read(item_path)
                             html_str = html_bytes.decode('utf-8', errors='ignore')
-                            
-                            # Replace image tags with structured inline image markers
-                            def img_tag_sub(m):
-                                src = m.group(1).split('?')[0].split('#')[0].strip()
-                                return f"\n\n[[INLINE_IMAGE:{src}]]\n\n"
-                            html_str = re.sub(r'<(?:img|image)[^>]+(?:src|href|xlink:href)=[\x27\x22]([^\x27\x22]+)[\x27\x22][^>]*>', img_tag_sub, html_str, flags=re.IGNORECASE)
-                            
-                            html_str = re.sub(r'<(p|br|div|h[1-6]|li|tr|td|th)[^>]*>', '\n', html_str, flags=re.IGNORECASE)
-                            html_str = re.sub(r'<[^>]+>', '', html_str)
-                            html_str = html.unescape(html_str)
-                            html_str = re.sub(r'\n{3,}', '\n\n', html_str)
-                            
-                            title = toc_map.get(href, f"Chapter {idx+1}")
-                            clean_chapter_content = process_inline_footnotes(html_str.strip())
-                            book.chapters.append(Chapter(title, clean_chapter_content))
+                            clean_text = clean_html_to_clean_text(html_str)
+                            if clean_text:
+                                title = toc_map.get(href, f"Chapter {idx+1}")
+                                clean_chapter_content = process_inline_footnotes(clean_text)
+                                book.chapters.append(Chapter(title, clean_chapter_content))
                         except:
                             pass
         return book
@@ -554,22 +601,14 @@ class KindleParser:
                     parts = re.split(r'<mbp:pagebreak[^>]*>', html_str, flags=re.IGNORECASE)
                     
                     for idx, part in enumerate(parts):
-                        def img_tag_sub(m):
-                            src = m.group(1).split('?')[0].split('#')[0].strip()
-                            return f"\n\n[[INLINE_IMAGE:{src}]]\n\n"
-                        part = re.sub(r'<(?:img|image)[^>]+(?:src|href|xlink:href)=[\x27\x22]([^\x27\x22]+)[\x27\x22][^>]*>', img_tag_sub, part, flags=re.IGNORECASE)
-                        part = re.sub(r'<(p|br|div|h[1-6]|li|tr|td|th)[^>]*>', '\n', flags=re.IGNORECASE)
-                        part = re.sub(r'<[^>]+>', '', part)
-                        part = html.unescape(part)
-                        part = re.sub(r'\n{3,}', '\n\n', part).strip()
-                        
-                        if part:
-                            lines = [l.strip() for l in part.split('\n') if l.strip()]
+                        part_clean = clean_html_to_clean_text(part)
+                        if part_clean:
+                            lines = [l.strip() for l in part_clean.split('\n') if l.strip()]
                             title = f"Part {idx+1}"
-                            if lines and len(lines[0]) < 60:
+                            if lines and len(lines[0]) < 60 and not lines[0].startswith("[["):
                                 title = lines[0]
-                            part_clean = process_inline_footnotes(part)
-                            book.chapters.append(Chapter(title, part_clean))
+                            part_final = process_inline_footnotes(part_clean)
+                            book.chapters.append(Chapter(title, part_final))
                             
                     if not book.chapters:
                         book.chapters.append(Chapter("Content", "No readable text found."))
