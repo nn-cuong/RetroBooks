@@ -4,6 +4,19 @@ import textwrap
 import traceback
 import json
 import re
+import html
+import ctypes
+import threading
+import queue as _queue_mod
+import hashlib
+import zipfile
+import shutil
+import base64
+import urllib.parse as urllib
+import xml.etree.ElementTree as ET
+
+def log_debug(msg):
+    pass
 
 SAVES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "saves.json")
 SETTINGS_KEY = "__retroread_settings__"
