@@ -1157,9 +1157,9 @@ def main():
                 else:
                     axis_right = True
 
-            # Dedicated Joystick Axis handling for STATE_TOC (1:1 smooth responsiveness like D-Pad)
+            # Dedicated Joystick Axis handling for STATE_TOC (100ms smooth responsiveness matching Right Stick)
             if state == STATE_TOC:
-                if not left_axis_held or (current_ticks - last_left_axis_time > 180):
+                if not left_axis_held or (current_ticks - last_left_axis_time > 100):
                     if abs(ay) >= 15000 and abs(ay) >= abs(ax):
                         if toc_tab == 0:
                             # Tab 0: Chapter List (Up/Down 1 item)
