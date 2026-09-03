@@ -778,11 +778,11 @@ def main():
     def rotate_reader_direction(dx, dy):
         rot = reader_rotation_idx % 4
         if rot == 1:
-            return -dy, dx
+            return dy, -dx
         elif rot == 2:
             return -dx, -dy
         elif rot == 3:
-            return dy, -dx
+            return -dy, dx
         return dx, dy
 
     def handle_reader_direction(dx, dy):
@@ -959,8 +959,7 @@ def main():
             if state == STATE_READER and (current_ticks - last_axis_scroll > 100):
                 if abs(ax) >= 15000 or abs(ay) >= 15000:
                     if abs(ax) > abs(ay):
-                        dir_x = (-1 if ax > 0 else 1) if (reader_rotation_idx % 2 == 1) else (1 if ax > 0 else -1)
-                        handle_reader_direction(dir_x, 0)
+                        handle_reader_direction(1 if ax > 0 else -1, 0)
                     else:
                         handle_reader_direction(0, 1 if ay > 0 else -1)
                     last_axis_scroll = current_ticks
