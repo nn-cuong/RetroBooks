@@ -2357,17 +2357,21 @@ def main():
                     px = (reader_w - pw) // 2
                     py = (reader_h - ph) // 2
                     
+                    accent_col = theme.get("sel", (139, 69, 19))
+                    header_col = theme.get("header", (28, 28, 36))
+                    text_col = theme.get("text", (220, 220, 220, 255))
+                    
                     renderer.fill((px, py, pw, ph), (18, 18, 24))
-                    renderer.fill((px, py, pw, 3), theme["sel"])
-                    renderer.fill((px, py + ph - 3, pw, 3), theme["sel"])
-                    renderer.fill((px, py, 3, ph), theme["sel"])
-                    renderer.fill((px + pw - 3, py, 3, ph), theme["sel"])
+                    renderer.fill((px, py, pw, 3), accent_col)
+                    renderer.fill((px, py + ph - 3, pw, 3), accent_col)
+                    renderer.fill((px, py, 3, ph), accent_col)
+                    renderer.fill((px + pw - 3, py, 3, ph), accent_col)
                     
                     header_h = 58
-                    renderer.fill((px + 3, py + 3, pw - 6, header_h), theme.get("header", (28, 28, 36)))
-                    renderer.fill((px + 3, py + header_h + 3, pw - 6, 1), theme["divider"])
+                    renderer.fill((px + 3, py + 3, pw - 6, header_h), header_col)
+                    renderer.fill((px + 3, py + header_h + 3, pw - 6, 1), (60, 60, 75))
                     
-                    tex_hdr, hw, hh = render_text("CÀI ĐẶT HIỂN THỊ (TYPOGRAPHY)", font_ui_medium, theme["sel"])
+                    tex_hdr, hw, hh = render_text("CÀI ĐẶT HIỂN THỊ (TYPOGRAPHY)", font_ui_medium, accent_col)
                     if tex_hdr:
                         sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_hdr, None, sdl2.SDL_Rect(px + (pw - hw) // 2, py + (header_h - hh) // 2 + 3, hw, hh))
                         sdl2.SDL_DestroyTexture(tex_hdr)
@@ -2389,14 +2393,14 @@ def main():
                         is_sel = (r_idx == typography_sel_idx)
                         
                         if is_sel:
-                            renderer.fill((rx, ry, rw, row_h), theme["sel"])
+                            renderer.fill((rx, ry, rw, row_h), accent_col)
                             renderer.fill((rx + 2, ry + 2, rw - 4, row_h - 4), (34, 40, 52))
-                            label_col = theme.get("sel_text", (255, 255, 255, 255))
-                            val_col = theme["sel"]
+                            label_col = (255, 255, 255, 255)
+                            val_col = accent_col
                         else:
                             renderer.fill((rx, ry, rw, row_h), (26, 26, 34))
-                            label_col = theme["secondary"]
-                            val_col = theme["text"]
+                            label_col = (180, 185, 195, 255)
+                            val_col = text_col
                             
                         tex_lbl, lw, lh = render_text(label, font_small, label_col)
                         if tex_lbl:
