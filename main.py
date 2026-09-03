@@ -15,84 +15,35 @@ import base64
 import urllib.parse as urllib
 import xml.etree.ElementTree as ET
 
-def log_debug(msg):
-    pass
+from constants import (
+    SCREEN_W, SCREEN_H,
+    STATE_BROWSE, STATE_READER, STATE_TOC, STATE_QUIT_CONFIRM, STATE_IMAGE_VIEW, STATE_ABOUT,
+    VALID_EXTS, VALID_EXTS_SET,
+    THEMES, LIBRARY_THEMES
+)
 
-SAVES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "saves.json")
-SETTINGS_KEY = "__retroread_settings__"
+from storage import (
+    load_settings, write_settings,
+    load_typography_settings, write_typography_settings,
+    load_save, write_save,
+    load_theme_idx, write_theme_idx,
+    load_library_view, write_library_view,
+    load_reader_rotation_idx, write_reader_rotation_idx
+)
 
-def load_typography_settings():
-    settings = load_settings()
-    try:
-        font_size = int(settings.get("font_size", 34))
-        line_spacing = float(settings.get("line_spacing", 1.32))
-        word_spacing = float(settings.get("word_spacing", 1.0))
-        margin_side = int(settings.get("margin_side", 20))
-        return {
-            "font_size": font_size,
-            "line_spacing": line_spacing,
-            "word_spacing": word_spacing,
-            "margin_side": margin_side
-        }
-    except:
-        return {
-            "font_size": 34,
-            "line_spacing": 1.32,
-            "word_spacing": 1.0,
-            "margin_side": 20
-        }
+from parsers import (
+    Chapter, Book,
+    EPUBParser, FB2Parser, TXTParser, KindleParser,
+    get_parser, extract_epub_cover_data,
+    process_inline_footnotes, clean_html_to_clean_text
+)
 
-def write_typography_settings(font_size, line_spacing, word_spacing, margin_side):
-    write_settings({
-        "font_size": font_size,
-        "line_spacing": line_spacing,
-        "word_spacing": word_spacing,
-        "margin_side": margin_side
-    })
-
-def load_save(filepath):
-    typo = load_typography_settings()
-    try:
-        with open(SAVES_FILE, 'r') as f:
-            saves = json.load(f)
-        book_save = saves.get(filepath, {})
-        return {
-            "scroll_y": book_save.get("scroll_y", 0),
-            "font_size": typo["font_size"],
-            "line_spacing": typo["line_spacing"],
-            "word_spacing": typo["word_spacing"],
-            "margin_side": typo["margin_side"]
-        }
-    except:
-        return {
-            "scroll_y": 0,
-            "font_size": typo["font_size"],
-            "line_spacing": typo["line_spacing"],
-            "word_spacing": typo["word_spacing"],
-            "margin_side": typo["margin_side"]
-        }
-
-def write_save(filepath, scroll_y, font_size=None, line_spacing=None, word_spacing=None, margin_side=None):
-    try:
-        saves = {}
-        if os.path.exists(SAVES_FILE):
-            with open(SAVES_FILE, 'r') as f:
-                saves = json.load(f)
-        saves[filepath] = {
-            "scroll_y": scroll_y
-        }
-        if font_size is not None:
-            settings = saves.get(SETTINGS_KEY, {})
-            settings["font_size"] = font_size
-            if line_spacing is not None: settings["line_spacing"] = line_spacing
-            if word_spacing is not None: settings["word_spacing"] = word_spacing
-            if margin_side is not None: settings["margin_side"] = margin_side
-            saves[SETTINGS_KEY] = settings
-            
-        with open(SAVES_FILE, 'w') as f:
-            json.dump(saves, f)
-    except:
-        pass
+from ui_dialogs import (
+    draw_about_dialog,
+    draw_quit_confirm_dialog,
+    draw_typography_popup,
+    draw_toast_notification
+)
 
 # Add local bundled vendor
 VENDOR_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vendor")
@@ -112,211 +63,12 @@ except ImportError as e:
 
 FONT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "font.ttf")
 
-SCREEN_W = 1024
-SCREEN_H = 768
-
-# Themes
-THEMES = [
-    {
-        "name": "Vintage Dark",
-        "bg": sdl2.ext.Color(40, 30, 20),          # #281E14
-        "text": sdl2.SDL_Color(235, 213, 171, 255),# #EBD5AB
-        "header": sdl2.ext.Color(30, 20, 15),      # #1E140F
-        "sel": sdl2.ext.Color(139, 69, 19),        # #8B4513
-    },
-    {
-        "name": "Night Mode",
-        "bg": sdl2.ext.Color(23, 25, 28),          # #17191C
-        "text": sdl2.SDL_Color(232, 229, 221, 255),# #E8E5DD
-        "header": sdl2.ext.Color(15, 17, 19),      # #0F1113
-        "sel": sdl2.ext.Color(60, 60, 60),         # #3C3C3C
-    },
-    {
-        "name": "Paper",
-        "bg": sdl2.ext.Color(245, 241, 230),       # #F5F1E6
-        "text": sdl2.SDL_Color(51, 48, 43, 255),   # #33302B
-        "header": sdl2.ext.Color(230, 225, 210),   # #E6E1D2
-        "sel": sdl2.ext.Color(118, 107, 90),       # #766B5A
-    },
-    {
-        "name": "Warm Night",
-        "bg": sdl2.ext.Color(243, 231, 199),       # #F3E7C7
-        "text": sdl2.SDL_Color(61, 52, 40, 255),   # #3D3428
-        "header": sdl2.ext.Color(230, 213, 173),   # #E6D5AD
-        "sel": sdl2.ext.Color(216, 185, 110),      # #D8B96E
-    },
-    {
-        "name": "AMOLED Black",
-        "bg": sdl2.ext.Color(0, 0, 0),             # #000000
-        "text": sdl2.SDL_Color(218, 218, 218, 255),# #DADADA
-        "header": sdl2.ext.Color(5, 5, 5),         # #050505
-        "sel": sdl2.ext.Color(37, 37, 37),         # #252525
-    },
-    {
-        "name": "Forest",
-        "bg": sdl2.ext.Color(24, 32, 27),          # #18201B
-        "text": sdl2.SDL_Color(217, 226, 213, 255),# #D9E2D5
-        "header": sdl2.ext.Color(16, 23, 17),      # #101711
-        "sel": sdl2.ext.Color(73, 98, 79),         # #49624F
-    },
-    {
-        "name": "Coastal Earth",
-        "bg": sdl2.ext.Color(44, 54, 57),          # #2C3639 Dark Charcoal Blue
-        "text": sdl2.SDL_Color(220, 215, 201, 255),# #DCD7C9 Warm Ivory
-        "header": sdl2.ext.Color(63, 78, 79),      # #3F4E4F Muted Slate Green
-        "sel": sdl2.ext.Color(162, 123, 92),       # #A27B5C Dusty Earth Brown
-    }
-]
-
-# Library-only palette.  The reader keeps its existing themes and rendering.
-LIBRARY_THEMES = [
-    {
-        "bg": sdl2.ext.Color(40, 30, 20),          # #281E14
-        "header": sdl2.ext.Color(30, 20, 15),      # #1E140F
-        "divider": sdl2.ext.Color(76, 56, 39),     # #4C3827
-        "text": sdl2.SDL_Color(235, 213, 171, 255),# #EBD5AB
-        "secondary": sdl2.SDL_Color(184, 159, 118, 255),# #B89F76
-        "accent": sdl2.ext.Color(210, 149, 93),    # #D2955D
-        "sel_border": sdl2.ext.Color(210, 149, 93),# #D2955D
-        "sel_bg": sdl2.ext.Color(64, 48, 33),      # #403021
-        "sel_text": sdl2.SDL_Color(245, 225, 190, 255),# #F5E1BE
-        "sel_sec": sdl2.SDL_Color(195, 175, 140, 255), # #C3AF8C
-    },
-    {
-        "bg": sdl2.ext.Color(20, 20, 20),          # #141414
-        "header": sdl2.ext.Color(10, 10, 10),      # #0A0A0A
-        "divider": sdl2.ext.Color(52, 52, 52),     # #343434
-        "text": sdl2.SDL_Color(212, 212, 212, 255),# #D4D4D4
-        "secondary": sdl2.SDL_Color(154, 154, 154, 255),# #9A9A9A
-        "accent": sdl2.ext.Color(164, 177, 194),   # #A4B1C2
-        "sel_border": sdl2.ext.Color(102, 137, 181),# #6689B5
-        "sel_bg": sdl2.ext.Color(38, 42, 48),      # #262A30
-        "sel_text": sdl2.SDL_Color(240, 240, 240, 255),# #F0F0F0
-        "sel_sec": sdl2.SDL_Color(180, 180, 180, 255), # #B4B4B4
-    },
-    {
-        "bg": sdl2.ext.Color(244, 236, 216),       # #F4ECD8
-        "header": sdl2.ext.Color(220, 210, 190),   # #DCD2BE
-        "divider": sdl2.ext.Color(204, 193, 171),  # #CCC1AB
-        "text": sdl2.SDL_Color(59, 52, 40, 255),   # #3B3428
-        "secondary": sdl2.SDL_Color(118, 107, 90, 255),# #766B5A
-        "accent": sdl2.ext.Color(107, 91, 149),    # #6B5B95
-        "sel_border": sdl2.ext.Color(168, 120, 40),# #A87828
-        "sel_bg": sdl2.ext.Color(252, 247, 235),   # #FCF7EB
-        "sel_text": sdl2.SDL_Color(30, 26, 18, 255),# #1E1A12
-        "sel_sec": sdl2.SDL_Color(95, 85, 70, 255),# #5F5546
-    },
-    {
-        "bg": sdl2.ext.Color(243, 231, 199),       # #F3E7C7
-        "header": sdl2.ext.Color(230, 213, 173),   # #E6D5AD
-        "divider": sdl2.ext.Color(216, 197, 157),  # #D8C59D
-        "text": sdl2.SDL_Color(61, 52, 40, 255),   # #3D3428
-        "secondary": sdl2.SDL_Color(117, 104, 84, 255),# #756854
-        "accent": sdl2.ext.Color(168, 120, 40),    # #A87828
-        "sel_border": sdl2.ext.Color(168, 120, 40),# #A87828
-        "sel_bg": sdl2.ext.Color(238, 224, 185),   # #EEE0B9
-        "sel_text": sdl2.SDL_Color(55, 42, 25, 255),# #372A19
-        "sel_sec": sdl2.SDL_Color(110, 85, 55, 255),# #6E5537
-    },
-    {
-        "bg": sdl2.ext.Color(0, 0, 0),             # #000000
-        "header": sdl2.ext.Color(5, 5, 5),         # #050505
-        "divider": sdl2.ext.Color(26, 26, 26),     # #1A1A1A
-        "text": sdl2.SDL_Color(216, 216, 216, 255),# #D8D8D8
-        "secondary": sdl2.SDL_Color(136, 136, 136, 255),# #888888
-        "accent": sdl2.ext.Color(143, 168, 199),   # #8FA8C7
-        "sel_border": sdl2.ext.Color(112, 112, 112),# #707070
-        "sel_bg": sdl2.ext.Color(28, 28, 28),      # #1C1C1C
-        "sel_text": sdl2.SDL_Color(240, 240, 240, 255),# #F0F0F0
-        "sel_sec": sdl2.SDL_Color(170, 170, 170, 255), # #AAAAAA
-    },
-    {
-        "bg": sdl2.ext.Color(24, 32, 27),          # #18201B
-        "header": sdl2.ext.Color(16, 23, 17),      # #101711
-        "divider": sdl2.ext.Color(52, 66, 55),     # #344237
-        "text": sdl2.SDL_Color(217, 226, 213, 255),# #D9E2D5
-        "secondary": sdl2.SDL_Color(158, 173, 159, 255),# #9EAD9F
-        "accent": sdl2.ext.Color(168, 184, 138),   # #A8B88A
-        "sel_border": sdl2.ext.Color(112, 138, 104),# #708A68
-        "sel_bg": sdl2.ext.Color(41, 54, 45),      # #29362D
-        "sel_text": sdl2.SDL_Color(240, 244, 237, 255),# #F0F4ED
-        "sel_sec": sdl2.SDL_Color(184, 195, 184, 255), # #B8C3B8
-    },
-    {
-        "name": "Coastal Earth",
-        "bg": sdl2.ext.Color(44, 54, 57),          # #2C3639 Dark Charcoal Blue
-        "header": sdl2.ext.Color(63, 78, 79),      # #3F4E4F Muted Slate Green
-        "divider": sdl2.ext.Color(74, 91, 92),     # #4A5B5C Muted Slate Divider
-        "text": sdl2.SDL_Color(220, 215, 201, 255),# #DCD7C9 Warm Ivory
-        "secondary": sdl2.SDL_Color(170, 166, 155, 255),# #AAA69B Muted Ivory
-        "accent": sdl2.ext.Color(162, 123, 92),    # #A27B5C Dusty Earth Brown
-        "sel_border": sdl2.ext.Color(162, 123, 92),# #A27B5C Dusty Earth Brown
-        "sel_bg": sdl2.ext.Color(58, 68, 71),      # #3A4447 Deep Slate
-        "sel_text": sdl2.SDL_Color(240, 237, 228, 255),# #F0EDE4 Pure Ivory
-        "sel_sec": sdl2.SDL_Color(190, 185, 172, 255), # #BEB9AC
-    }
-]
-
-def load_theme_idx():
-    settings = load_settings()
-    try:
-        return int(settings.get("theme_idx", 0)) % len(THEMES)
-    except:
-        return 0
-
-def write_theme_idx(theme_idx):
-    write_settings({"theme_idx": theme_idx % len(THEMES)})
-
-def load_library_view():
-    settings = load_settings()
-    return settings.get("library_view", "list")
-
-def write_library_view(view_mode):
-    write_settings({"library_view": view_mode})
-
-def load_reader_rotation_idx():
-    settings = load_settings()
-    try:
-        return int(settings.get("reader_rotation_idx", 0)) % 4
-    except:
-        return 0
-
-def write_reader_rotation_idx(rotation_idx):
-    write_settings({"reader_rotation_idx": rotation_idx % 4})
-
-def load_settings():
-    try:
-        with open(SAVES_FILE, 'r') as f:
-            saves = json.load(f)
-        return saves.get(SETTINGS_KEY, {})
-    except:
-        return {}
-
-def write_settings(settings_update):
-    try:
-        saves = {}
-        if os.path.exists(SAVES_FILE):
-            with open(SAVES_FILE, 'r') as f:
-                saves = json.load(f)
-        settings = saves.get(SETTINGS_KEY, {})
-        settings.update(settings_update)
-        saves[SETTINGS_KEY] = settings
-        with open(SAVES_FILE, 'w') as f:
-            json.dump(saves, f)
-    except:
-        pass
-
-STATE_BROWSE = 0
-STATE_READER = 1
-STATE_TOC = 2
-STATE_QUIT_CONFIRM = 3
-STATE_IMAGE_VIEW = 4
-STATE_ABOUT = 5
+def log_debug(msg):
+    pass
 
 def get_directory_contents(path):
     folders = []
     files = []
-    valid_exts_set = {'.txt', '.md', '.log', '.csv', '.json', '.epub', '.fb2', '.mobi', '.azw', '.azw3'}
     try:
         with os.scandir(path) as it:
             for entry in it:
@@ -327,7 +79,7 @@ def get_directory_contents(path):
                         folders.append(entry.name)
                     else:
                         ext = os.path.splitext(entry.name)[1].lower()
-                        if ext in valid_exts_set:
+                        if ext in VALID_EXTS_SET:
                             files.append(entry.name)
                 except OSError:
                     pass
@@ -347,353 +99,6 @@ def draw_book_icon(renderer, x, y, color, background):
     renderer.fill((x, y, 15, 20), color)
     renderer.fill((x + 3, y + 3, 2, 14), background)
 
-def process_inline_footnotes(text):
-    if not text:
-        return text
-    import re
-    lines = text.split('\n')
-    cleaned_paras = [l.strip() for l in lines if l.strip()]
-    if not cleaned_paras:
-        return text
-    
-    # Footnote regex patterns: (*), (**), [1], (1), 1., etc.
-    fn_header_regex = re.compile(r'^(\(\*+\)|\*+|\(?\d+\)?(?:\.|\:)|\[\d+\])\s*(.*)$', re.DOTALL)
-    
-    trailing_defs = []
-    end_idx = len(cleaned_paras)
-    
-    while end_idx > 0:
-        p = cleaned_paras[end_idx - 1]
-        m = fn_header_regex.match(p)
-        if m and len(p) > 2:
-            marker = m.group(1).strip()
-            content = m.group(2).strip()
-            if not content:
-                content = marker
-            trailing_defs.append((marker, content, end_idx - 1))
-            end_idx -= 1
-        elif p.lower() in ("chú thích", "chú thích:", "footnotes", "footnotes:", "notes", "notes:", "ghi chú", "ghi chú:"):
-            end_idx -= 1
-            break
-        else:
-            break
-            
-    if not trailing_defs:
-        return text
-        
-    trailing_defs.reverse()
-    body_paras = list(cleaned_paras[:end_idx])
-    
-    for marker, content, _ in trailing_defs:
-        search_markers = [marker]
-        if marker.startswith('(') and marker.endswith(')'):
-            search_markers.append(marker[1:-1])
-        elif marker.startswith('[') and marker.endswith(']'):
-            search_markers.append(marker[1:-1])
-            search_markers.append(f"({marker[1:-1]})")
-        
-        found = False
-        for b_idx in range(len(body_paras) - 1, -1, -1):
-            bp = body_paras[b_idx]
-            if bp.startswith("[[INLINE_FOOTNOTE:") or bp.startswith("[[INLINE_IMAGE:"):
-                continue
-            for sm in search_markers:
-                if sm in bp:
-                    fn_tag = f"[[INLINE_FOOTNOTE:{marker}|{content}]]"
-                    body_paras.insert(b_idx + 1, fn_tag)
-                    found = True
-                    break
-            if found:
-                break
-                
-        if not found:
-            body_paras.append(f"[[INLINE_FOOTNOTE:{marker}|{content}]]")
-            
-    return "\n\n".join(body_paras)
-
-def clean_html_to_clean_text(html_str):
-    if not html_str:
-        return ""
-    import re
-    import html
-    
-    # 1. Replace image tags with structured inline image markers
-    def img_tag_sub(m):
-        src = m.group(1).split('?')[0].split('#')[0].strip()
-        return f"\n\n[[INLINE_IMAGE:{src}]]\n\n"
-    html_str = re.sub(r'<(?:img|image)[^>]+(?:src|href|xlink:href)=[\x27\x22]([^\x27\x22]+)[\x27\x22][^>]*>', img_tag_sub, html_str, flags=re.IGNORECASE)
-    
-    # 2. Strip <head>...</head> (contains meta tags, stylesheets, scripts)
-    html_str = re.sub(r'<head[^>]*>.*?</head>', '', html_str, flags=re.DOTALL | re.IGNORECASE)
-    
-    # 3. Strip <style>...</style> and <script>...</script>
-    html_str = re.sub(r'<style[^>]*>.*?</style>', '', html_str, flags=re.DOTALL | re.IGNORECASE)
-    html_str = re.sub(r'<script[^>]*>.*?</script>', '', html_str, flags=re.DOTALL | re.IGNORECASE)
-    
-    # 4. Strip XML processing instructions and comments
-    html_str = re.sub(r'<\?xml.*?\?>', '', html_str, flags=re.DOTALL | re.IGNORECASE)
-    html_str = re.sub(r'<!--.*?-->', '', html_str, flags=re.DOTALL | re.IGNORECASE)
-    
-    # 5. Convert block tags to newlines
-    html_str = re.sub(r'<(p|br|div|h[1-6]|li|tr|td|th|blockquote|section|article)[^>]*>', '\n', html_str, flags=re.IGNORECASE)
-    
-    # 6. Strip all remaining HTML tags
-    html_str = re.sub(r'<[^>]+>', '', html_str)
-    
-    # 7. Unescape HTML entities
-    html_str = html.unescape(html_str)
-    html_str = html_str.replace('\xa0', ' ')
-    
-    # 8. Clean up junk metadata lines (Calibre metadata, CSS residue, UUIDs, ISBNs)
-    clean_lines = []
-    metadata_patterns = [
-        re.compile(r'^calibre:.*', re.IGNORECASE),
-        re.compile(r'^@page\s*\{.*', re.IGNORECASE),
-        re.compile(r'^\.[a-zA-Z0-9_-]+\s*\{.*', re.IGNORECASE),
-        re.compile(r'^(?:urn:)?uuid:[0-9a-fA-F-]+', re.IGNORECASE),
-        re.compile(r'^(?:file|ebook)\s+generated\s+by\s+.*', re.IGNORECASE),
-        re.compile(r'^body\s*\{.*', re.IGNORECASE),
-        re.compile(r'^\s*\{\s*margin[^}]*\}', re.IGNORECASE),
-    ]
-    for line in html_str.split('\n'):
-        l_str = line.strip()
-        if not l_str:
-            clean_lines.append("")
-            continue
-        is_junk = any(p.match(l_str) for p in metadata_patterns)
-        if not is_junk:
-            clean_lines.append(line)
-            
-    res_text = "\n".join(clean_lines)
-    res_text = re.sub(r'\n{3,}', '\n\n', res_text).strip()
-    return res_text
-
-class Chapter:
-    def __init__(self, title, content):
-        self.title = title
-        self.content = content
-
-class Book:
-    def __init__(self, title="", author="", filepath=""):
-        self.title = title
-        self.author = author
-        self.filepath = filepath
-        self.chapters = []
-        self.images = []
-        self.image_loader = None
-        self.metadata = {}
-
-class EPUBParser:
-    @staticmethod
-    def parse(filepath) -> Book:
-        import zipfile
-        import xml.etree.ElementTree as ET
-        import html
-        import re
-        
-        book = Book(filepath=filepath)
-        with zipfile.ZipFile(filepath, 'r') as zf:
-            # Collect all image files
-            img_exts = ('.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp')
-            for name in zf.namelist():
-                if name.lower().endswith(img_exts) and not name.startswith('__MACOSX') and not os.path.basename(name).startswith('.'):
-                    book.images.append(name)
-            
-            def natural_keys(text):
-                return [int(c) if c.isdigit() else c.lower() for c in re.split(r'(\d+)', text)]
-            book.images.sort(key=natural_keys)
-            
-            epub_path = filepath
-            book.image_loader = lambda img_name: zipfile.ZipFile(epub_path, 'r').read(img_name)
-
-            container_xml = zf.read('META-INF/container.xml')
-            root = ET.fromstring(container_xml)
-            opf_path = ""
-            for child in root.iter():
-                if child.tag.endswith('rootfile'):
-                    opf_path = child.attrib.get('full-path')
-                    break
-            if opf_path:
-                opf_dir = os.path.dirname(opf_path)
-                opf_content = zf.read(opf_path)
-                opf_root = ET.fromstring(opf_content)
-                
-                manifest = {}
-                spine = []
-                for child in opf_root.iter():
-                    if child.tag.endswith('item'):
-                        manifest[child.attrib.get('id')] = child.attrib.get('href')
-                    elif child.tag.endswith('itemref'):
-                        spine.append(child.attrib.get('idref'))
-                
-                toc_map = {}
-                for item_id, href in manifest.items():
-                    if href.endswith('.ncx'):
-                        try:
-                            ncx_content = zf.read(href if not opf_dir else f"{opf_dir}/{href}")
-                            ncx_root = ET.fromstring(ncx_content)
-                            for navPoint in ncx_root.iter():
-                                if navPoint.tag.endswith('navPoint'):
-                                    text_node = navPoint.find('.//*{http://www.daisy.org/z3986/2005/ncx/}text')
-                                    content_node = navPoint.find('.//*{http://www.daisy.org/z3986/2005/ncx/}content')
-                                    if text_node is not None and content_node is not None:
-                                        src = content_node.attrib.get('src', '').split('#')[0]
-                                        toc_map[src] = text_node.text
-                        except:
-                            pass
-                
-                for idx, item_id in enumerate(spine):
-                    if item_id in manifest:
-                        href = manifest[item_id]
-                        item_path = href if not opf_dir else f"{opf_dir}/{href}"
-                        try:
-                            html_bytes = zf.read(item_path)
-                            html_str = html_bytes.decode('utf-8', errors='ignore')
-                            clean_text = clean_html_to_clean_text(html_str)
-                            if clean_text:
-                                title = toc_map.get(href, f"Chapter {idx+1}")
-                                clean_chapter_content = process_inline_footnotes(clean_text)
-                                book.chapters.append(Chapter(title, clean_chapter_content))
-                        except:
-                            pass
-        return book
-
-class FB2Parser:
-    @staticmethod
-    def parse(filepath) -> Book:
-        import xml.etree.ElementTree as ET
-        import re
-        import base64
-        book = Book(filepath=filepath)
-        with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
-            xml_content = f.read()
-        xml_content = re.sub(r'\sxmlns="[^"]+"', '', xml_content, count=1)
-        
-        def fb2_img_sub(m):
-            src = m.group(1).lstrip('#').strip()
-            return f"\n\n[[INLINE_IMAGE:{src}]]\n\n"
-        xml_content = re.sub(r'<image[^>]+(?:href|xlink:href)=[\x27\x22]([^\x27\x22]+)[\x27\x22][^>]*>', fb2_img_sub, xml_content, flags=re.IGNORECASE)
-
-        try:
-            root = ET.fromstring(xml_content)
-            
-            binaries = {}
-            for bin_node in root.findall('.//binary'):
-                bin_id = bin_node.attrib.get('id', '')
-                if bin_id and bin_node.text:
-                    try:
-                        binaries[bin_id] = base64.b64decode(bin_node.text.strip())
-                        book.images.append(bin_id)
-                    except:
-                        pass
-            book.image_loader = lambda b_id: binaries.get(b_id)
-
-            bodies = root.findall('body')
-            main_body = bodies[0] if bodies else root
-            
-            sections = main_body.findall('.//section')
-            if not sections:
-                text_parts = ["".join(p.itertext()).strip() for p in main_body.findall('.//p')]
-                book.chapters.append(Chapter("Book", "\n\n".join(text_parts)))
-            else:
-                for idx, sec in enumerate(sections):
-                    title_node = sec.find('title')
-                    title_text = "".join(title_node.itertext()).strip() if title_node is not None else f"Chapter {idx+1}"
-                    
-                    text_parts = []
-                    for p in sec.findall('p'):
-                        p_text = "".join(p.itertext()).strip()
-                        if p_text: text_parts.append(p_text)
-                    
-                    raw_sec = "\n\n".join(text_parts)
-                    clean_sec = process_inline_footnotes(raw_sec)
-                    book.chapters.append(Chapter(title_text, clean_sec))
-        except Exception as e:
-            book.chapters.append(Chapter("Error", f"Could not parse FB2: {str(e)}"))
-        return book
-
-class TXTParser:
-    @staticmethod
-    def parse(filepath) -> Book:
-        book = Book(filepath=filepath)
-        with open(filepath, 'r', encoding='utf-8', errors='replace') as f:
-            text_data = f.read()
-        
-        chunk_len = len(text_data) // 10
-        if chunk_len == 0:
-            parsed_content = process_inline_footnotes(text_data)
-            book.chapters.append(Chapter("Content", parsed_content))
-        else:
-            for i in range(10):
-                book.chapters.append(Chapter(f"Part {i+1} ({(i)*10}%)", text_data[i*chunk_len:(i+1)*chunk_len]))
-        return book
-
-class KindleParser:
-    @staticmethod
-    def parse(filepath) -> Book:
-        import shutil
-        import re
-        import html
-        
-        try:
-            import mobi
-            extracted_dir, filepath_extracted = mobi.extract(filepath)
-            try:
-                if filepath_extracted.lower().endswith('.epub'):
-                    return EPUBParser.parse(filepath_extracted)
-                else:
-                    book = Book(filepath=filepath)
-                    with open(filepath_extracted, 'r', encoding='utf-8', errors='ignore') as f:
-                        html_str = f.read()
-                    
-                    # Extract any images in extracted_dir
-                    img_dict = {}
-                    img_exts = ('.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp')
-                    for root_dir, _, fnames in os.walk(extracted_dir):
-                        for fn in fnames:
-                            if fn.lower().endswith(img_exts):
-                                f_full = os.path.join(root_dir, fn)
-                                try:
-                                    with open(f_full, 'rb') as img_f:
-                                        img_dict[fn] = img_f.read()
-                                except:
-                                    pass
-                    if img_dict:
-                        def natural_keys(text):
-                            return [int(c) if c.isdigit() else c.lower() for c in re.split(r'(\d+)', text)]
-                        book.images = sorted(list(img_dict.keys()), key=natural_keys)
-                        book.image_loader = lambda img_fn: img_dict.get(img_fn)
-
-                    parts = re.split(r'<mbp:pagebreak[^>]*>', html_str, flags=re.IGNORECASE)
-                    
-                    for idx, part in enumerate(parts):
-                        part_clean = clean_html_to_clean_text(part)
-                        if part_clean:
-                            lines = [l.strip() for l in part_clean.split('\n') if l.strip()]
-                            title = f"Part {idx+1}"
-                            if lines and len(lines[0]) < 60 and not lines[0].startswith("[["):
-                                title = lines[0]
-                            part_final = process_inline_footnotes(part_clean)
-                            book.chapters.append(Chapter(title, part_final))
-                            
-                    if not book.chapters:
-                        book.chapters.append(Chapter("Content", "No readable text found."))
-                    return book
-            finally:
-                try:
-                    shutil.rmtree(extracted_dir)
-                except: pass
-        except Exception as e:
-            book = Book(filepath=filepath)
-            book.chapters.append(Chapter("Error", "This ebook is DRM-protected or unsupported.\n\nError details: " + str(e)))
-            return book
-
-def get_parser(filepath):
-    ext = os.path.splitext(filepath)[1].lower()
-    if ext == '.epub': return EPUBParser()
-    elif ext == '.fb2': return FB2Parser()
-    elif ext in ['.mobi', '.azw', '.azw3']: return KindleParser()
-    else: return TXTParser()
 
 def main():
     sdl2.SDL_Init(sdl2.SDL_INIT_VIDEO | sdl2.SDL_INIT_JOYSTICK | sdl2.SDL_INIT_GAMECONTROLLER)
@@ -767,24 +172,7 @@ def main():
     library_view_mode = load_library_view() # "list" or "grid"
     cover_cache = {}  # filepath -> (SDL_Texture, w, h)
 
-    # -----------------------------------------------------------------------
-    # EPUB cover extractor (runs in background thread, no SDL calls here)
-    # -----------------------------------------------------------------------
-    def extract_epub_cover_data(filepath):
-        import zipfile
-        try:
-            with zipfile.ZipFile(filepath, 'r') as zf:
-                names = zf.namelist()
-                img_exts = ('.jpg', '.jpeg', '.png', '.webp', '.bmp')
-                covers = [n for n in names if any(n.lower().endswith(ext) for ext in img_exts) and 'cover' in os.path.basename(n).lower() and not n.startswith('__MACOSX')]
-                if covers:
-                    return zf.read(covers[0])
-                imgs = [n for n in names if any(n.lower().endswith(ext) for ext in img_exts) and not n.startswith('__MACOSX') and not os.path.basename(n).startswith('.')]
-                if imgs:
-                    return zf.read(imgs[0])
-        except Exception:
-            pass
-        return None
+
 
     # -----------------------------------------------------------------------
     # Fast Async Cover System: background thread + disk cache + downscaling
@@ -2638,169 +2026,16 @@ def main():
                         sdl2.SDL_DestroyTexture(tex_bot)
 
             if state == STATE_ABOUT:
-                lib_t = LIBRARY_THEMES[theme_idx]
-                sdl2.SDL_SetRenderDrawBlendMode(renderer.sdlrenderer, sdl2.SDL_BLENDMODE_BLEND)
-                sdl2.SDL_SetRenderDrawColor(renderer.sdlrenderer, 0, 0, 0, 160)
-                sdl2.SDL_RenderFillRect(renderer.sdlrenderer, sdl2.SDL_Rect(0, 0, SCREEN_W, SCREEN_H))
-                
-                pop_w, pop_h = 640, 400
-                pop_x, pop_y = (SCREEN_W - pop_w) // 2, (SCREEN_H - pop_h) // 2
-                renderer.fill((pop_x, pop_y, pop_w, pop_h), lib_t["sel_border"])
-                renderer.fill((pop_x + 2, pop_y + 2, pop_w - 4, pop_h - 4), lib_t["bg"])
-                
-                # Title
-                tex, tw, th = render_text("APPLICATION INFO", font_medium, lib_t["accent"])
-                if tex:
-                    sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(pop_x + (pop_w - tw)//2, pop_y + 24, tw, th))
-                    sdl2.SDL_DestroyTexture(tex)
-                    
-                # App Name
-                tex, tw, th = render_text("RetroBooks v1.0", font_large, lib_t["text"])
-                if tex:
-                    sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(pop_x + (pop_w - tw)//2, pop_y + 68, tw, th))
-                    sdl2.SDL_DestroyTexture(tex)
-                    
-                # Subtitle
-                tex, tw, th = render_text("Ebook & Novel Reader for TrimUI Brick Pro", font_small, lib_t["secondary"])
-                if tex:
-                    sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(pop_x + (pop_w - tw)//2, pop_y + 128, tw, th))
-                    sdl2.SDL_DestroyTexture(tex)
-                    
-                renderer.fill((pop_x + 40, pop_y + 166, pop_w - 80, 1), lib_t["divider"])
-                
-                # Info lines
-                lines = [
-                    "Author: Nguyen Ngoc Cuong",
-                    "Email: nn.cuong.404@gmail.com",
-                    "Facebook: aegony98 / Instagram: ich_heisse_cuong"
-                ]
-                iy = pop_y + 200
-                for line in lines:
-                    tex, tw, th = render_text(line, font_small, lib_t["text"])
-                    if tex:
-                        sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(pop_x + 35, iy, min(tw, pop_w - 70), th))
-                        sdl2.SDL_DestroyTexture(tex)
-                    iy += 40
-                    
-                renderer.fill((pop_x + 40, pop_y + pop_h - 55, pop_w - 80, 1), lib_t["divider"])
-                tex, tw, th = render_text("B / SELECT: Close", font_small, lib_t["secondary"])
-                if tex:
-                    sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(pop_x + (pop_w - tw)//2, pop_y + pop_h - 40, tw, th))
-                    sdl2.SDL_DestroyTexture(tex)
-
+                draw_about_dialog(renderer, theme_idx, font_medium, font_large, font_small, render_text)
             elif state == STATE_QUIT_CONFIRM:
-                sdl2.SDL_SetRenderDrawBlendMode(renderer.sdlrenderer, sdl2.SDL_BLENDMODE_BLEND)
-                sdl2.SDL_SetRenderDrawColor(renderer.sdlrenderer, 0, 0, 0, 150)
-                sdl2.SDL_RenderFillRect(renderer.sdlrenderer, sdl2.SDL_Rect(0, 0, SCREEN_W, SCREEN_H))
-                
-                pop_w, pop_h = 600, 200
-                pop_x, pop_y = (SCREEN_W - pop_w)//2, (SCREEN_H - pop_h)//2
-                
-                renderer.fill((pop_x, pop_y, pop_w, pop_h), theme["sel"])
-                renderer.fill((pop_x+2, pop_y+2, pop_w-4, pop_h-4), theme["bg"])
-                
-                msg = "Exit RetroBooks?"
-                sdlttf.TTF_SetFontStyle(font_large, sdlttf.TTF_STYLE_BOLD)
-                tex, tw, th = render_text(msg, font_large, theme["text"])
-                sdlttf.TTF_SetFontStyle(font_large, sdlttf.TTF_STYLE_NORMAL)
-                if tex:
-                    sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(pop_x + pop_w//2 - tw//2, pop_y + 40, tw, th))
-                    sdl2.SDL_DestroyTexture(tex)
-                
-                msg2 = "A: Confirm   B: Cancel"
-                tex, tw, th = render_text(msg2, font_ui_medium, theme["text"])
-                if tex:
-                    sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(pop_x + pop_w//2 - tw//2, pop_y + 130, tw, th))
-                    sdl2.SDL_DestroyTexture(tex)
+                draw_quit_confirm_dialog(renderer, theme, font_large, font_ui_medium, render_text)
 
             # Typography Modal Popup on Top of Reader (matching Exit Popup style)
             if show_typography_popup and state == STATE_READER:
-                sdl2.SDL_SetRenderDrawBlendMode(renderer.sdlrenderer, sdl2.SDL_BLENDMODE_BLEND)
-                sdl2.SDL_SetRenderDrawColor(renderer.sdlrenderer, 0, 0, 0, 160)
-                sdl2.SDL_RenderFillRect(renderer.sdlrenderer, sdl2.SDL_Rect(0, 0, SCREEN_W, SCREEN_H))
-                
-                pop_w = 680
-                pop_h = 470
-                pop_x = (SCREEN_W - pop_w) // 2
-                pop_y = (SCREEN_H - pop_h) // 2
-                
-                renderer.fill((pop_x, pop_y, pop_w, pop_h), theme["sel"])
-                renderer.fill((pop_x + 3, pop_y + 3, pop_w - 6, pop_h - 6), theme["bg"])
-                
-                header_h = 56
-                renderer.fill((pop_x + 3, pop_y + 3, pop_w - 6, header_h), theme.get("header", theme["bg"]))
-                renderer.fill((pop_x + 3, pop_y + header_h + 3, pop_w - 6, 2), theme["sel"])
-                
-                sdlttf.TTF_SetFontStyle(font_ui_medium, sdlttf.TTF_STYLE_BOLD)
-                tex_hdr, hw, hh = render_text("TYPOGRAPHY SETTINGS", font_ui_medium, theme["text"])
-                sdlttf.TTF_SetFontStyle(font_ui_medium, sdlttf.TTF_STYLE_NORMAL)
-                if tex_hdr:
-                    sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_hdr, None, sdl2.SDL_Rect(pop_x + (pop_w - hw) // 2, pop_y + (header_h - hh) // 2 + 3, hw, hh))
-                    sdl2.SDL_DestroyTexture(tex_hdr)
-                    
-                options = [
-                    ("Font Size", f"{current_font_size} px"),
-                    ("Line Spacing", f"{line_spacing_mult:.2f}x"),
-                    ("Word Spacing", f"{word_spacing_mult:.1f}x"),
-                    ("Side Margin", f"{margin_side} px"),
-                    ("Theme", THEMES[theme_idx].get("name", f"Theme {theme_idx+1}"))
-                ]
-                
-                row_y_start = pop_y + header_h + 18
-                row_h = 56
-                for r_idx, (label, val_str) in enumerate(options):
-                    ry = row_y_start + r_idx * (row_h + 8)
-                    rx = pop_x + 24
-                    rw = pop_w - 48
-                    is_sel = (r_idx == typography_sel_idx)
-                    
-                    if is_sel:
-                        renderer.fill((rx, ry, rw, row_h), theme["sel"])
-                        renderer.fill((rx + 2, ry + 2, rw - 4, row_h - 4), theme.get("header", theme["bg"]))
-                        label_col = theme["text"]
-                        val_col = theme["sel"]
-                    else:
-                        renderer.fill((rx, ry, rw, row_h), theme.get("header", theme["bg"]))
-                        label_col = theme["text"]
-                        val_col = theme["text"]
-                        
-                    sdlttf.TTF_SetFontStyle(font_small, sdlttf.TTF_STYLE_BOLD if is_sel else sdlttf.TTF_STYLE_NORMAL)
-                    tex_lbl, lw, lh = render_text(label, font_small, label_col)
-                    sdlttf.TTF_SetFontStyle(font_small, sdlttf.TTF_STYLE_NORMAL)
-                    if tex_lbl:
-                        sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_lbl, None, sdl2.SDL_Rect(rx + 16, ry + (row_h - lh) // 2, lw, lh))
-                        sdl2.SDL_DestroyTexture(tex_lbl)
-                        
-                    display_val = f"◀  {val_str}  ▶" if is_sel else val_str
-                    sdlttf.TTF_SetFontStyle(font_small, sdlttf.TTF_STYLE_BOLD if is_sel else sdlttf.TTF_STYLE_NORMAL)
-                    tex_v, vw, vh = render_text(display_val, font_small, val_col)
-                    sdlttf.TTF_SetFontStyle(font_small, sdlttf.TTF_STYLE_NORMAL)
-                    if tex_v:
-                        sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_v, None, sdl2.SDL_Rect(rx + rw - vw - 16, ry + (row_h - vh) // 2, vw, vh))
-                        sdl2.SDL_DestroyTexture(tex_v)
-                        
-                footer_y = pop_y + pop_h - 42
-                msg_foot = "A: Save   |   B / R2: Cancel   |   D-Pad: Select & Adjust"
-                tex_foot, fw, fh = render_text(msg_foot, font_small, theme["text"])
-                if tex_foot:
-                    sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_foot, None, sdl2.SDL_Rect(pop_x + (pop_w - fw) // 2, footer_y, fw, fh))
-                    sdl2.SDL_DestroyTexture(tex_foot)
+                draw_typography_popup(renderer, theme, current_font_size, line_spacing_mult, word_spacing_mult, margin_side, theme_idx, typography_sel_idx, font_ui_medium, font_small, render_text)
 
             # Toast notification
-            if toast_msg and (current_ticks - toast_timer < 2000):
-                t_tex, tw, th = render_text(toast_msg, font_small, sdl2.SDL_Color(255, 255, 255, 255))
-                if t_tex:
-                    pad = 16
-                    box_w = tw + pad * 2
-                    box_h = th + pad
-                    box_x = (SCREEN_W - box_w) // 2
-                    box_y = SCREEN_H - 120
-                    renderer.fill((box_x, box_y, box_w, box_h), sdl2.ext.Color(30, 30, 30))
-                    renderer.fill((box_x + 2, box_y + 2, box_w - 4, box_h - 4), sdl2.ext.Color(60, 60, 60))
-                    sdl2.SDL_RenderCopy(renderer.sdlrenderer, t_tex, None, sdl2.SDL_Rect(box_x + pad, box_y + pad // 2, tw, th))
-                    sdl2.SDL_DestroyTexture(t_tex)
-            elif toast_msg and (current_ticks - toast_timer >= 2000):
-                toast_msg = ""
+            toast_msg = draw_toast_notification(renderer, toast_msg, toast_timer, current_ticks, font_small, render_text)
 
             renderer.present()
             needs_redraw = False
