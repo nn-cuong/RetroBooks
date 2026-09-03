@@ -71,7 +71,8 @@ Một ứng dụng đọc sách điện tử (Ebook & Novel Reader) mã nguồn 
 | **D-pad / Analog Lên / Xuống** | Di chuyển từng chương (Tab Chương) hoặc nhảy hàng ảnh $\pm 4$ (Tab Ảnh) |
 | **D-pad / Analog Trái / Phải** | Nhảy $\pm 8$ chương (Tab Chương) hoặc di chuyển ảnh kế bên $\pm 1$ (Tab Ảnh) |
 | **Nút vai L1 / R1** | Chuyển đổi qua lại giữa **[Tab Chương sách] $\leftrightarrow$ [Tab Lưới Ảnh Thumbnail]** |
-| **Nút A** | Nhảy đến chương đang chọn / Mở xem ảnh toàn màn hình |
+| **Nút A** | Nhảy đến chương đang chọn (Tab Chương) / **Nhảy đến vị trí của ảnh trong văn bản đang đọc (Tab Ảnh)** |
+| **Nút X** | **Mở xem ảnh toàn màn hình Fullscreen (Tab Ảnh)** |
 | **Nút B / SELECT** | Đóng Mục lục và trở về trang sách đang đọc |
 
 ---
