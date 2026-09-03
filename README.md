@@ -7,8 +7,6 @@ Một ứng dụng đọc sách điện tử (Ebook & Novel Reader) mã nguồn 
 ## 🌟 Tính năng nổi bật
 
 - **Hỗ trợ đa dạng định dạng Ebook:** Đọc mượt mà các định dạng phổ biến nhất hiện nay: **EPUB, MOBI, AZW, AZW3, FB2, TXT**.
-- **Hiển thị hình ảnh minh họa trực tiếp (Inline Images):** Tự động phát hiện và render ảnh bìa, tranh minh họa ngay trong nội dung chương sách theo đúng vị trí của tác phẩm, căn giữa chuẩn xác và tự động co giãn giữ nguyên tỷ lệ ảnh gốc.
-- **Trình xem tranh ảnh toàn màn hình (Fullscreen Gallery Viewer):** Nhấn phím tắt **L2 / R2** hoặc vào Menu mục lục để xem từng bức tranh minh họa full màn hình, hỗ trợ phóng to (Fit $\rightarrow$ 150% $\rightarrow$ 200%), di chuyển (Pan) và xoay ngang 90°.
 - **Typography & Font chữ Tiếng Việt cao cấp (Apple Books style):**
   - Thuật toán ngắt dòng thông minh (Smart Word Wrap) tính toán theo pixel thực tế, đảm bảo không bao giờ bị vỡ từ hay gãy chữ Tiếng Việt có dấu.
   - Bộ đệm độ rộng từ (Word-width cache) giúp tăng tốc độ dàn trang và cuộn trang lên gấp 3 lần.
@@ -18,8 +16,6 @@ Một ứng dụng đọc sách điện tử (Ebook & Novel Reader) mã nguồn 
   - Tự động bóc tách ảnh bìa thực tế từ tệp EPUB (thẻ OPF manifest cover-image) hiển thị sắc nét trong Grid View.
   - Thẻ bìa Hardcover dập chìm hoa văn thanh lịch cho các sách không có bìa hoặc tệp văn bản thuần.
   - Tự động ghi nhớ chế độ xem yêu thích vào bộ nhớ cấu hình.
-- **Tự động cuộn chữ Marquee:** Khi tên sách dài vượt quá chiều rộng thẻ chọn, văn bản sẽ tự động chạy chữ qua lại mượt mà khi con trỏ dừng trên cuốn sách đó.
-- **Thanh tiêu đề 1 dòng tinh gọn:** Tự động loại bỏ tên tác giả (`- Tác giả`) ở đuôi tên tệp và phần mở rộng file, hiển thị tên tác phẩm gọn gàng nhất.
 - **6 Bộ chủ đề đọc sách chuyên sâu:**
   1. **Vintage Dark** *(Mặc định)* — Nâu cổ điển ấm áp.
   2. **Night Mode** — Xám than hiện đại, tương phản cao.
