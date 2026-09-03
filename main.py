@@ -281,6 +281,70 @@ def draw_book_icon(renderer, x, y, color, background):
     renderer.fill((x, y, 15, 20), color)
     renderer.fill((x + 3, y + 3, 2, 14), background)
 
+def process_inline_footnotes(text):
+    if not text:
+        return text
+    import re
+    lines = text.split('\n')
+    cleaned_paras = [l.strip() for l in lines if l.strip()]
+    if not cleaned_paras:
+        return text
+    
+    # Footnote regex patterns: (*), (**), [1], (1), 1., etc.
+    fn_header_regex = re.compile(r'^(\(\*+\)|\*+|\(?\d+\)?(?:\.|\:)|\[\d+\])\s*(.*)$', re.DOTALL)
+    
+    trailing_defs = []
+    end_idx = len(cleaned_paras)
+    
+    while end_idx > 0:
+        p = cleaned_paras[end_idx - 1]
+        m = fn_header_regex.match(p)
+        if m and len(p) > 2:
+            marker = m.group(1).strip()
+            content = m.group(2).strip()
+            if not content:
+                content = marker
+            trailing_defs.append((marker, content, end_idx - 1))
+            end_idx -= 1
+        elif p.lower() in ("chú thích", "chú thích:", "footnotes", "footnotes:", "notes", "notes:", "ghi chú", "ghi chú:"):
+            end_idx -= 1
+            break
+        else:
+            break
+            
+    if not trailing_defs:
+        return text
+        
+    trailing_defs.reverse()
+    body_paras = list(cleaned_paras[:end_idx])
+    
+    for marker, content, _ in trailing_defs:
+        search_markers = [marker]
+        if marker.startswith('(') and marker.endswith(')'):
+            search_markers.append(marker[1:-1])
+        elif marker.startswith('[') and marker.endswith(']'):
+            search_markers.append(marker[1:-1])
+            search_markers.append(f"({marker[1:-1]})")
+        
+        found = False
+        for b_idx in range(len(body_paras) - 1, -1, -1):
+            bp = body_paras[b_idx]
+            if bp.startswith("[[INLINE_FOOTNOTE:") or bp.startswith("[[INLINE_IMAGE:"):
+                continue
+            for sm in search_markers:
+                if sm in bp:
+                    fn_tag = f"[[INLINE_FOOTNOTE:{marker}|{content}]]"
+                    body_paras.insert(b_idx + 1, fn_tag)
+                    found = True
+                    break
+            if found:
+                break
+                
+        if not found:
+            body_paras.append(f"[[INLINE_FOOTNOTE:{marker}|{content}]]")
+            
+    return "\n\n".join(body_paras)
+
 class Chapter:
     def __init__(self, title, content):
         self.title = title
@@ -375,7 +439,8 @@ class EPUBParser:
                             html_str = re.sub(r'\n{3,}', '\n\n', html_str)
                             
                             title = toc_map.get(href, f"Chapter {idx+1}")
-                            book.chapters.append(Chapter(title, html_str.strip()))
+                            clean_chapter_content = process_inline_footnotes(html_str.strip())
+                            book.chapters.append(Chapter(title, clean_chapter_content))
                         except:
                             pass
         return book
@@ -427,7 +492,9 @@ class FB2Parser:
                         p_text = "".join(p.itertext()).strip()
                         if p_text: text_parts.append(p_text)
                     
-                    book.chapters.append(Chapter(title_text, "\n\n".join(text_parts)))
+                    raw_sec = "\n\n".join(text_parts)
+                    clean_sec = process_inline_footnotes(raw_sec)
+                    book.chapters.append(Chapter(title_text, clean_sec))
         except Exception as e:
             book.chapters.append(Chapter("Error", f"Could not parse FB2: {str(e)}"))
         return book
@@ -441,7 +508,8 @@ class TXTParser:
         
         chunk_len = len(text_data) // 10
         if chunk_len == 0:
-            book.chapters.append(Chapter("Full Text", text_data))
+            parsed_content = process_inline_footnotes(text_data)
+            book.chapters.append(Chapter("Content", parsed_content))
         else:
             for i in range(10):
                 book.chapters.append(Chapter(f"Part {i+1} ({(i)*10}%)", text_data[i*chunk_len:(i+1)*chunk_len]))
@@ -500,7 +568,8 @@ class KindleParser:
                             title = f"Part {idx+1}"
                             if lines and len(lines[0]) < 60:
                                 title = lines[0]
-                            book.chapters.append(Chapter(title, part))
+                            part_clean = process_inline_footnotes(part)
+                            book.chapters.append(Chapter(title, part_clean))
                             
                     if not book.chapters:
                         book.chapters.append(Chapter("Content", "No readable text found."))
@@ -1062,6 +1131,38 @@ def main():
                 if paragraph.startswith("[[INLINE_IMAGE:") and paragraph.endswith("]]"):
                     img_src = paragraph[len("[[INLINE_IMAGE:"): -2].strip()
                     reader_lines.append({"type": "image", "src": img_src})
+                    continue
+                
+                if paragraph.startswith("[[INLINE_FOOTNOTE:") and paragraph.endswith("]]"):
+                    inner = paragraph[len("[[INLINE_FOOTNOTE:"): -2]
+                    marker = "(*)"
+                    note_text = inner
+                    if "|" in inner:
+                        marker, note_text = inner.split("|", 1)
+                    
+                    f_words = note_text.split(' ')
+                    f_lines = []
+                    cur_f_line = []
+                    cur_f_w = 0
+                    f_max_w = max_line_width - 40 # Callout box padding
+                    for fw in f_words:
+                        if not fw: continue
+                        fww = get_word_width(fw)
+                        if not cur_f_line:
+                            cur_f_line.append(fw)
+                            cur_f_w += fww
+                        else:
+                            if cur_f_w + space_width + fww <= f_max_w:
+                                cur_f_line.append(fw)
+                                cur_f_w += space_width + fww
+                            else:
+                                f_lines.append(" ".join(cur_f_line))
+                                cur_f_line = [fw]
+                                cur_f_w = fww
+                    if cur_f_line:
+                        f_lines.append(" ".join(cur_f_line))
+                    
+                    reader_lines.append({"type": "footnote", "marker": marker, "lines": f_lines})
                     continue
                 
                 # Split by space to prevent breaking Vietnamese words
@@ -1970,6 +2071,45 @@ def main():
                                 sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(20, y_pos, tw, th))
                                 sdl2.SDL_DestroyTexture(tex)
                             y_pos += line_height
+                    elif isinstance(item, dict) and item.get("type") == "footnote":
+                        marker = item.get("marker", "(*)")
+                        f_lines = item.get("lines", [])
+                        f_pad_x = 18
+                        f_pad_y = 10
+                        f_line_h = int(line_height * 0.85)
+                        box_w = reader_w - 40
+                        box_h = f_pad_y * 2 + (len(f_lines) + 1) * f_line_h
+                        step = box_h + 14
+                        if y_pos > 50 and (y_pos + step > max_y):
+                            break
+                        
+                        # Glassmorphic Callout Box
+                        renderer.fill((20, y_pos, box_w, box_h), theme.get("header", theme["bg"]))
+                        # Left Accent Indicator Line (4px thick)
+                        renderer.fill((20, y_pos, 4, box_h), theme["sel"])
+                        # 1px Subtle Card Border (Top, Bottom, Right)
+                        divider_col = theme.get("divider", theme["header"])
+                        renderer.fill((20, y_pos, box_w, 1), divider_col)
+                        renderer.fill((20, y_pos + box_h - 1, box_w, 1), divider_col)
+                        renderer.fill((20 + box_w - 1, y_pos, 1, box_h), divider_col)
+                        
+                        # Title: "💡 Chú thích (*):"
+                        cur_fy = y_pos + f_pad_y
+                        tex_title, tw, th = render_text(f"💡 Chú thích {marker}:", font_small, theme["sel"])
+                        if tex_title:
+                            sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_title, None, sdl2.SDL_Rect(20 + f_pad_x, cur_fy, min(tw, box_w - f_pad_x * 2), th))
+                            sdl2.SDL_DestroyTexture(tex_title)
+                        cur_fy += f_line_h
+                        
+                        # Body lines in Secondary / Subtle text color
+                        for fl in f_lines:
+                            tex_fl, fw, fh = render_text(fl, font_small, theme.get("secondary", theme["text"]))
+                            if tex_fl:
+                                sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_fl, None, sdl2.SDL_Rect(20 + f_pad_x, cur_fy, min(fw, box_w - f_pad_x * 2), fh))
+                                sdl2.SDL_DestroyTexture(tex_fl)
+                            cur_fy += f_line_h
+                            
+                        y_pos += step
                     elif item == "":
                         step = max(2, line_height // 6)
                         if y_pos + step > max_y:
