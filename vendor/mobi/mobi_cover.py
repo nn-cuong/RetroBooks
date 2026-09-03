@@ -1,7 +1,34 @@
 #!/usr/bin/env python
 # vim:ts=4:sw=4:softtabstop=4:smarttab:expandtab
 
-import imghdr
+try:
+    import imghdr
+except ImportError:
+    class _ImghdrPolyfill:
+        @staticmethod
+        def what(file, h=None):
+            if h is None:
+                if isinstance(file, (str, bytes)):
+                    with open(file, 'rb') as f:
+                        h = f.read(32)
+                elif hasattr(file, 'tell') and hasattr(file, 'seek') and hasattr(file, 'read'):
+                    pos = file.tell()
+                    h = file.read(32)
+                    file.seek(pos)
+                else:
+                    return None
+            if len(h) >= 2 and h[:2] == b'\xff\xd8':
+                return 'jpeg'
+            if len(h) >= 8 and h[:8] == b'\x89PNG\r\n\x1a\n':
+                return 'png'
+            if len(h) >= 6 and h[:6] in (b'GIF87a', b'GIF89a'):
+                return 'gif'
+            if len(h) >= 2 and h[:2] in (b'BM',):
+                return 'bmp'
+            if len(h) >= 12 and h[:4] == b'RIFF' and h[8:12] == b'WEBP':
+                return 'webp'
+            return None
+    imghdr = _ImghdrPolyfill()
 import os
 import struct
 

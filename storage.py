@@ -50,12 +50,18 @@ def load_typography_settings():
             "margin_side": 20
         }
 
-def write_typography_settings(font_size, line_spacing, word_spacing, margin_side):
+def write_typography_settings(font_size, line_spacing=None, word_spacing=None, margin_side=None):
+    if isinstance(font_size, dict):
+        d = font_size
+        font_size = d.get("font_size", 34)
+        line_spacing = d.get("line_spacing", 1.32)
+        word_spacing = d.get("word_spacing", 1.0)
+        margin_side = d.get("margin_side", 20)
     write_settings({
-        "font_size": font_size,
-        "line_spacing": line_spacing,
-        "word_spacing": word_spacing,
-        "margin_side": margin_side
+        "font_size": int(font_size) if font_size is not None else 34,
+        "line_spacing": float(line_spacing) if line_spacing is not None else 1.32,
+        "word_spacing": float(word_spacing) if word_spacing is not None else 1.0,
+        "margin_side": int(margin_side) if margin_side is not None else 20
     })
 
 def load_save(filepath):

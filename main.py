@@ -38,6 +38,21 @@ from parsers import (
     process_inline_footnotes, clean_html_to_clean_text
 )
 
+from covers import (
+    CoverManager,
+    get_book_img_thumbnail,
+    get_inline_image,
+    find_image_key,
+    find_image_reader_line
+)
+from ui_views import (
+    draw_book_icon,
+    draw_browse_view,
+    draw_book_reader_view,
+    draw_toc_view,
+    draw_image_view
+)
+
 from ui_dialogs import (
     draw_about_dialog,
     draw_quit_confirm_dialog,
@@ -94,15 +109,12 @@ def get_book_display_metadata(filename):
     stem = os.path.splitext(filename)[0]
     return stem.strip(), ""
 
-def draw_book_icon(renderer, x, y, color, background):
-    """Small pixel-friendly book glyph, deliberately free of emoji assets."""
-    renderer.fill((x, y, 15, 20), color)
-    renderer.fill((x + 3, y + 3, 2, 14), background)
 
 
 def main():
     sdl2.SDL_Init(sdl2.SDL_INIT_VIDEO | sdl2.SDL_INIT_JOYSTICK | sdl2.SDL_INIT_GAMECONTROLLER)
     sdlttf.TTF_Init()
+    sdlimage.IMG_Init(sdlimage.IMG_INIT_JPG | sdlimage.IMG_INIT_PNG | sdlimage.IMG_INIT_WEBP)
 
     controllers = []
     for i in range(sdl2.SDL_NumJoysticks()):
@@ -174,150 +186,8 @@ def main():
 
 
 
-    # -----------------------------------------------------------------------
-    # Fast Async Cover System: background thread + disk cache + downscaling
-    # Cover cell on screen: 170x200 px. We store covers at 255x300 (1.5x for
-    # crisp rendering) — that is the 3/4-of-source downscale quality setting.
-    # -----------------------------------------------------------------------
-    import threading, hashlib
-    import queue as _queue_mod
-    COVER_CACHE_DIR = "/mnt/SDCARD/.cover_cache"
-    try:
-        os.makedirs(COVER_CACHE_DIR, exist_ok=True)
-    except Exception:
-        pass
+    cover_manager = CoverManager()
 
-    def _cover_disk_path(fp):
-        h = hashlib.sha1(fp.encode("utf-8", errors="replace")).hexdigest()[:16]
-        return os.path.join(COVER_CACHE_DIR, h + ".bmp")
-
-    def _decode_cover(img_data):
-        """CPU-side: decode bytes -> SDL_Surface at full native resolution.
-        No downscaling here: GPU handles display scaling at render time for
-        maximum sharpness at any cover cell size."""
-        rw = sdl2.SDL_RWFromConstMem(img_data, len(img_data))
-        src = sdlimage.IMG_Load_RW(rw, 1)
-        if not src:
-            return None, 0, 0
-        sw, sh = src.contents.w, src.contents.h
-        if sw <= 0 or sh <= 0:
-            sdl2.SDL_FreeSurface(src)
-            return None, 0, 0
-        return src, sw, sh
-
-    cover_pending        = set()              # guarded by _cover_q_lock
-    _cover_q             = _queue_mod.Queue() # blocking FIFO for workers
-    _cover_q_lock        = threading.Lock()   # guard cover_pending
-    cover_ready          = {}                 # filepath -> (surf,w,h) or (None,0,0)
-    cover_ready_lock     = threading.Lock()
-    cover_thread_running = [True]
-
-    def _cover_worker():
-        while cover_thread_running[0]:
-            try:
-                filepath = _cover_q.get(timeout=0.5)
-            except Exception:
-                continue
-            disk = _cover_disk_path(filepath)
-            img_data = None
-            if os.path.exists(disk):
-                try:
-                    with open(disk, "rb") as f:
-                        img_data = f.read()
-                except Exception:
-                    img_data = None
-            if not img_data:
-                _ext = os.path.splitext(filepath)[1].lower()
-                if _ext == '.epub':
-                    img_data = extract_epub_cover_data(filepath)
-            if not img_data:
-                with cover_ready_lock:
-                    cover_ready[filepath] = (None, 0, 0)
-                _cover_q.task_done()
-                continue
-            surf, dw, dh = _decode_cover(img_data)
-            if surf and dw > 0:
-                if not os.path.exists(disk):
-                    try:
-                        sdl2.SDL_SaveBMP(surf, disk.encode("utf-8"))
-                    except Exception:
-                        pass
-                with cover_ready_lock:
-                    cover_ready[filepath] = (surf, dw, dh)
-            else:
-                if surf:
-                    sdl2.SDL_FreeSurface(surf)
-                with cover_ready_lock:
-                    cover_ready[filepath] = (None, 0, 0)
-            _cover_q.task_done()
-
-    # 3 parallel decode threads
-    _cover_threads = []
-    for _i in range(3):
-        _t = threading.Thread(target=_cover_worker, daemon=True)
-        _t.start()
-        _cover_threads.append(_t)
-
-    def pump_cover_ready():
-        """Call once per frame: promote finished CPU surfaces -> GPU textures."""
-        with cover_ready_lock:
-            if not cover_ready:
-                return
-            batch = list(cover_ready.items())
-            cover_ready.clear()
-        for fp, result in batch:
-            if len(result) == 3 and result[0] is not None:
-                surf, dw, dh = result
-                tex = sdl2.SDL_CreateTextureFromSurface(renderer.sdlrenderer, surf)
-                sdl2.SDL_FreeSurface(surf)
-                cover_cache[fp] = (tex, dw, dh) if tex else (None, 0, 0)
-            else:
-                cover_cache[fp] = (None, 0, 0)
-
-    def get_cover_texture(filepath):
-        """Non-blocking: returns cached texture or queues background load."""
-        if filepath in cover_cache:
-            return cover_cache[filepath]
-        with cover_ready_lock:
-            already = filepath in cover_ready
-        if not already:
-            with _cover_q_lock:
-                if filepath not in cover_pending:
-                    cover_pending.add(filepath)
-                    _cover_q.put_nowait(filepath)
-        return (None, 0, 0)
-
-    def prewarm_covers(item_list, path):
-        """Pre-queue all file items immediately when entering a directory."""
-        for item in item_list:
-            if not item["is_dir"]:
-                fp = os.path.join(path, item["name"])
-                if fp not in cover_cache:
-                    with cover_ready_lock:
-                        already = fp in cover_ready
-                    if not already:
-                        with _cover_q_lock:
-                            if fp not in cover_pending:
-                                cover_pending.add(fp)
-                                _cover_q.put_nowait(fp)
-
-    def clear_cover_cache():
-        with _cover_q_lock:
-            cover_pending.clear()
-        while not _cover_q.empty():
-            try: _cover_q.get_nowait(); _cover_q.task_done()
-            except Exception: break
-        with cover_ready_lock:
-            for result in cover_ready.values():
-                if len(result) == 3 and result[0] is not None:
-                    sdl2.SDL_FreeSurface(result[0])
-            cover_ready.clear()
-        for tex, _, _ in cover_cache.values():
-            if tex:
-                sdl2.SDL_DestroyTexture(tex)
-        cover_cache.clear()
-
-    
     # NOTE: cover_queue_lock replaced by _cover_q_lock -- no references remain
 
     def _make_list_items_for_path(fldrs, fls, cur_path, base_path):
@@ -396,115 +266,6 @@ def main():
                 pass
         book_img_thumb_cache.clear()
 
-    def get_book_img_thumbnail(img_path, max_w=216, max_h=260):
-        nonlocal book_img_thumb_cache
-        if not img_path or not image_loader:
-            return None
-        if img_path in book_img_thumb_cache:
-            return book_img_thumb_cache[img_path]
-        try:
-            data = image_loader(img_path)
-            if not data:
-                return None
-            rw = sdl2.SDL_RWFromConstMem(data, len(data))
-            orig_surf = sdlimage.IMG_Load_RW(rw, 1)
-            if orig_surf:
-                ow = orig_surf.contents.w
-                oh = orig_surf.contents.h
-                scale = min(float(max_w) / max(1, ow), float(max_h) / max(1, oh))
-                tw = max(1, int(ow * scale))
-                th = max(1, int(oh * scale))
-                small_surf = sdl2.SDL_CreateRGBSurfaceWithFormat(0, tw, th, 32, sdl2.SDL_PIXELFORMAT_RGBA8888)
-                if small_surf:
-                    sdl2.SDL_BlitScaled(orig_surf, None, small_surf, None)
-                    tex = sdl2.SDL_CreateTextureFromSurface(renderer.sdlrenderer, small_surf)
-                    sdl2.SDL_FreeSurface(small_surf)
-                else:
-                    tex = sdl2.SDL_CreateTextureFromSurface(renderer.sdlrenderer, orig_surf)
-                sdl2.SDL_FreeSurface(orig_surf)
-                if tex:
-                    info = {"tex": tex, "w": tw, "h": th}
-                    book_img_thumb_cache[img_path] = info
-                    return info
-        except Exception as e:
-            log_debug(f"get_book_img_thumbnail error: {e}")
-        return None
-
-    def find_image_key(src):
-        if not book_images:
-            return None
-        if src in book_images:
-            return src
-        clean_src = os.path.basename(src.split('?')[0].split('#')[0]).lower()
-        for img_path in book_images:
-            if os.path.basename(img_path).lower() == clean_src:
-                return img_path
-        for img_path in book_images:
-            if img_path.lower().endswith(clean_src):
-                return img_path
-        import urllib.parse
-        unquoted = urllib.parse.unquote(clean_src)
-        for img_path in book_images:
-            if os.path.basename(img_path).lower() == unquoted:
-                return img_path
-        return None
-
-    def find_image_reader_line(target_img_path):
-        if not target_img_path or not reader_lines:
-            return None
-        target_clean = os.path.basename(target_img_path.split('?')[0].split('#')[0]).lower()
-        for line_idx, line in enumerate(reader_lines):
-            if isinstance(line, dict) and line.get("type") == "image":
-                src = line.get("src", "")
-                if src == target_img_path:
-                    return line_idx
-                resolved = find_image_key(src)
-                if resolved == target_img_path:
-                    return line_idx
-                clean_src = os.path.basename(src.split('?')[0].split('#')[0]).lower()
-                if clean_src == target_clean:
-                    return line_idx
-        return None
-
-    def get_inline_image(img_src, max_w, max_h):
-        nonlocal inline_image_cache
-        resolved = find_image_key(img_src)
-        if not resolved or not image_loader:
-            return None
-        cache_key = (resolved, max_w, max_h)
-        if cache_key in inline_image_cache:
-            item = inline_image_cache[cache_key]
-            item["last_used"] = sdl2.SDL_GetTicks()
-            return item
-        try:
-            data = image_loader(resolved)
-            if not data:
-                return None
-            rw = sdl2.SDL_RWFromConstMem(data, len(data))
-            surf = sdlimage.IMG_Load_RW(rw, 1)
-            if surf:
-                ow = surf.contents.w
-                oh = surf.contents.h
-                scale = min(float(max_w) / ow, float(max_h) / oh)
-                if scale > 1.0:
-                    scale = 1.0
-                sw = max(1, int(ow * scale))
-                sh = max(1, int(oh * scale))
-                
-                tex = sdl2.SDL_CreateTextureFromSurface(renderer.sdlrenderer, surf)
-                sdl2.SDL_FreeSurface(surf)
-                if tex:
-                    if len(inline_image_cache) >= 12:
-                        oldest_key = min(inline_image_cache.keys(), key=lambda k: inline_image_cache[k]["last_used"])
-                        sdl2.SDL_DestroyTexture(inline_image_cache[oldest_key]["tex"])
-                        del inline_image_cache[oldest_key]
-                    entry = {"tex": tex, "w": sw, "h": sh, "last_used": sdl2.SDL_GetTicks()}
-                    inline_image_cache[cache_key] = entry
-                    return entry
-        except:
-            pass
-        return None
-
     def clear_inline_image_cache():
         nonlocal inline_image_cache
         for entry in inline_image_cache.values():
@@ -568,10 +329,34 @@ def main():
             while reader_scroll_y < max_s and is_blank(reader_scroll_y):
                 reader_scroll_y += 1
         elif dx < 0:
-            step = page_items_drawn if page_items_drawn > 0 else lines_per_page
-            reader_scroll_y = max(0, reader_scroll_y - step)
-            while reader_scroll_y > 0 and is_blank(reader_scroll_y):
-                reader_scroll_y -= 1
+            if reader_scroll_y > 0:
+                prev_y = 0
+                idx = reader_scroll_y - 1
+                max_content_h = max(100, (get_reader_view_size()[1] - 105))
+                target_idx = max(0, reader_scroll_y - (page_items_drawn if page_items_drawn > 0 else lines_per_page))
+                while idx >= 0:
+                    item = reader_lines[idx]
+                    if isinstance(item, dict) and item.get("type") == "image":
+                        h_step = line_height * 4
+                    elif isinstance(item, dict) and item.get("type") == "footnote":
+                        f_lines = item.get("lines", [])
+                        f_line_h = int(line_height * 0.85)
+                        box_h = 20 + (len(f_lines) + 1) * f_line_h
+                        h_step = box_h + 14
+                    elif item == "":
+                        h_step = max(2, line_height // 6)
+                    else:
+                        h_step = line_height
+                    if prev_y + h_step > max_content_h:
+                        target_idx = idx + 1
+                        break
+                    prev_y += h_step
+                    idx -= 1
+                if idx < 0:
+                    target_idx = 0
+                reader_scroll_y = target_idx
+                while reader_scroll_y > 0 and is_blank(reader_scroll_y):
+                    reader_scroll_y -= 1
         elif dx > 0:
             step = page_items_drawn if page_items_drawn > 0 else lines_per_page
             reader_scroll_y = min(max_s, reader_scroll_y + step)
@@ -581,10 +366,11 @@ def main():
     space_width = 12
 
     def recalculate_layout(only_metrics=False):
-        nonlocal lines_per_page, line_height, font_medium, reader_lines, chapter_offsets, space_width
+        nonlocal lines_per_page, line_height, font_medium, reader_lines, chapter_offsets, space_width, page_items_drawn
         reader_w, reader_h = get_reader_view_size()
         line_height = max(16, int(current_font_size * line_spacing_mult))
         lines_per_page = max(1, (reader_h - 105) // line_height)
+        page_items_drawn = lines_per_page
         
         if only_metrics:
             return
@@ -1066,20 +852,20 @@ def main():
                         if len(list_items) > 0:
                             item = list_items[sel_index]
                             if item["name"] == "..":
-                                clear_cover_cache()
+                                cover_manager.clear()
                                 current_path = os.path.dirname(current_path)
                                 folders, files = get_directory_contents(current_path)
                                 sel_index = 0
                                 scroll_y = 0
-                                prewarm_covers(_make_list_items_for_path(folders, files, current_path, base_path), current_path)
+                                cover_manager.prewarm_covers(_make_list_items_for_path(folders, files, current_path, base_path), current_path)
                                 needs_redraw = True
                             elif item["is_dir"]:
-                                clear_cover_cache()
+                                cover_manager.clear()
                                 current_path = os.path.join(current_path, item["name"])
                                 folders, files = get_directory_contents(current_path)
                                 sel_index = 0
                                 scroll_y = 0
-                                prewarm_covers(_make_list_items_for_path(folders, files, current_path, base_path), current_path)
+                                cover_manager.prewarm_covers(_make_list_items_for_path(folders, files, current_path, base_path), current_path)
                                 needs_redraw = True
                             else:
                                 filepath = os.path.join(current_path, item["name"])
@@ -1492,7 +1278,7 @@ def main():
             dpad_timer = 0
             dpad_horiz_timer = 0
 
-        pump_cover_ready()  # promote background-loaded covers to GPU textures
+        cover_manager.pump_ready(renderer)  # promote background-loaded covers to GPU textures
         if needs_redraw:
             theme = THEMES[theme_idx]
             renderer.clear(theme["bg"])
@@ -1503,527 +1289,34 @@ def main():
                 render_state = state
 
             if render_state == STATE_BROWSE:
-                library_theme = LIBRARY_THEMES[theme_idx]
-                renderer.clear(library_theme["bg"])
-                renderer.fill((0, 0, SCREEN_W, 76), library_theme["header"])
-                renderer.fill((0, 74, SCREEN_W, 2), library_theme["divider"])
-                sdlttf.TTF_SetFontStyle(font_large, sdlttf.TTF_STYLE_BOLD)
-                tex, tw, th = render_text("LIBRARY", font_large, library_theme["text"])
-                sdlttf.TTF_SetFontStyle(font_large, sdlttf.TTF_STYLE_NORMAL)
-                if tex:
-                    sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(32, 12, tw, th))
-                    sdl2.SDL_DestroyTexture(tex)
-
-                list_items = [{"name": "..", "is_dir": True}] if current_path != base_path else []
-                list_items += [{"name": f, "is_dir": True} for f in folders]
-                list_items += [{"name": f, "is_dir": False} for f in files]
-
-                mode_str = "[GRID]" if library_view_mode == "grid" else "[LIST]"
-                book_count = f"{len(files)} BOOK" + ("" if len(files) == 1 else "S") + f"    {mode_str}"
-                tex, tw, th = render_text(book_count, font_small, library_theme["secondary"])
-                if tex:
-                    sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(SCREEN_W - 32 - tw, 27, tw, th))
-                    sdl2.SDL_DestroyTexture(tex)
-
-                sel_border = library_theme.get("sel_border", sdl2.ext.Color(102, 137, 181))
-                sel_bg = library_theme.get("sel_bg", sdl2.ext.Color(229, 235, 241))
-                sel_text = library_theme.get("sel_text", sdl2.SDL_Color(30, 30, 30, 255))
-                sel_sec = library_theme.get("sel_sec", sdl2.SDL_Color(80, 80, 80, 255))
-                marquee_active = False
-
-                if library_view_mode == "grid":
-                    grid_page = sel_index // 8
-                    start_idx = grid_page * 8
-                    end_idx = min(len(list_items), start_idx + 8)
-
-                    col_w = 232
-                    row_h = 286
-                    start_x = 24
-                    start_y = 96
-                    gap_x = 16
-                    gap_y = 16
-
-                    for idx in range(start_idx, end_idx):
-                        rel_i = idx - start_idx
-                        col = rel_i % 4
-                        row = rel_i // 4
-                        cx = start_x + col * (col_w + gap_x)
-                        cy = start_y + row * (row_h + gap_y)
-
-                        item = list_items[idx]
-                        is_sel = (idx == sel_index)
-
-                        if is_sel:
-                            renderer.fill((cx, cy, col_w, row_h), sel_border)
-                            renderer.fill((cx + 2, cy + 2, col_w - 4, row_h - 4), sel_bg)
-                            card_text_col = sel_text
-                        else:
-                            renderer.fill((cx, cy, col_w, row_h), library_theme["divider"])
-                            renderer.fill((cx + 1, cy + 1, col_w - 2, row_h - 2), library_theme["header"])
-                            card_text_col = library_theme["text"]
-
-                        cover_w, cover_h = 170, 200
-                        cover_x = cx + (col_w - cover_w) // 2
-                        cover_y = cy + 14
-
-                        if item["is_dir"]:
-                            renderer.fill((cover_x, cover_y, cover_w, cover_h), library_theme["bg"])
-                            if item["name"] == "..":
-                                renderer.fill((cover_x + 50, cover_y + 80, 70, 40), library_theme["accent"])
-                                renderer.fill((cover_x + 52, cover_y + 82, 66, 36), library_theme["bg"])
-                                t_back, bw, bh = render_text("BACK", font_small, library_theme["accent"])
-                                if t_back:
-                                    sdl2.SDL_RenderCopy(renderer.sdlrenderer, t_back, None, sdl2.SDL_Rect(cover_x + (cover_w - bw) // 2, cover_y + 90, bw, bh))
-                                    sdl2.SDL_DestroyTexture(t_back)
-                            else:
-                                fx = cover_x + (cover_w - 90) // 2
-                                fy = cover_y + 60
-                                renderer.fill((fx, fy - 12, 45, 14), library_theme["accent"])
-                                renderer.fill((fx, fy, 90, 65), library_theme["accent"])
-                                renderer.fill((fx + 3, fy + 3, 84, 59), library_theme["bg"])
-                                t_dir, dw, dh = render_text("FOLDER", font_small, library_theme["accent"])
-                                if t_dir:
-                                    sdl2.SDL_RenderCopy(renderer.sdlrenderer, t_dir, None, sdl2.SDL_Rect(cover_x + (cover_w - dw) // 2, fy + 20, dw, dh))
-                                    sdl2.SDL_DestroyTexture(t_dir)
-                        else:
-                            filepath = os.path.join(current_path, item["name"])
-                            ext = os.path.splitext(item["name"])[1].lower()
-                            c_tex, orig_w, orig_h = get_cover_texture(filepath)
-                            if c_tex and orig_w > 0 and orig_h > 0:
-                                scale = min(cover_w / float(orig_w), cover_h / float(orig_h))
-                                dw = int(orig_w * scale)
-                                dh = int(orig_h * scale)
-                                tx = cover_x + (cover_w - dw) // 2
-                                ty = cover_y + (cover_h - dh) // 2
-                                renderer.fill((tx - 1, ty - 1, dw + 2, dh + 2), library_theme["divider"])
-                                sdl2.SDL_RenderCopy(renderer.sdlrenderer, c_tex, None, sdl2.SDL_Rect(tx, ty, dw, dh))
-                            else:
-                                renderer.fill((cover_x, cover_y, cover_w, cover_h), library_theme["bg"])
-                                renderer.fill((cover_x + 2, cover_y + 2, cover_w - 4, cover_h - 4), library_theme["header"])
-                                renderer.fill((cover_x + 14, cover_y + 2, 2, cover_h - 4), library_theme["divider"])
-                                draw_book_icon(renderer, cover_x + (cover_w - 15) // 2 + 5, cover_y + 65, library_theme["accent"], library_theme["header"])
-                                badge_str = ext.upper().lstrip('.') if ext else "BOOK"
-                                t_badge, bw, bh = render_text(f"[ {badge_str} ]", font_small, library_theme["secondary"])
-                                if t_badge:
-                                    sdl2.SDL_RenderCopy(renderer.sdlrenderer, t_badge, None, sdl2.SDL_Rect(cover_x + (cover_w - bw) // 2 + 5, cover_y + 115, bw, bh))
-                                    sdl2.SDL_DestroyTexture(t_badge)
-
-                        title, _ = get_book_display_metadata(item["name"]) if not item["is_dir"] else (item["name"], "")
-                        sdlttf.TTF_SetFontStyle(font_small, sdlttf.TTF_STYLE_BOLD if is_sel else sdlttf.TTF_STYLE_NORMAL)
-                        tex_title, tw, th = render_text(title, font_small, card_text_col)
-                        sdlttf.TTF_SetFontStyle(font_small, sdlttf.TTF_STYLE_NORMAL)
-                        if tex_title:
-                            title_y = cy + 236
-                            max_title_w = col_w - 16
-                            if tw > max_title_w and is_sel:
-                                marquee_active = True
-                                overflow = tw - max_title_w
-                                dt = current_ticks - sel_time
-                                pause_start = 1200
-                                speed = 0.04
-                                scroll_time = int(overflow / speed)
-                                pause_end = 1200
-                                total_cycle = pause_start + scroll_time + pause_end + scroll_time
-                                cycle_pos = dt % total_cycle
-                                if cycle_pos < pause_start:
-                                    offset = 0
-                                elif cycle_pos < pause_start + scroll_time:
-                                    offset = int((cycle_pos - pause_start) * speed)
-                                elif cycle_pos < pause_start + scroll_time + pause_end:
-                                    offset = overflow
-                                else:
-                                    back_t = cycle_pos - (pause_start + scroll_time + pause_end)
-                                    offset = overflow - int(back_t * speed)
-                                offset = max(0, min(overflow, offset))
-                                src = sdl2.SDL_Rect(offset, 0, max_title_w, th)
-                                dst = sdl2.SDL_Rect(cx + 8, title_y, max_title_w, th)
-                                sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_title, src, dst)
-                            else:
-                                dw = min(tw, max_title_w)
-                                tx = cx + (col_w - dw) // 2
-                                src = sdl2.SDL_Rect(0, 0, dw, th)
-                                dst = sdl2.SDL_Rect(tx, title_y, dw, th)
-                                sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_title, src, dst)
-                            sdl2.SDL_DestroyTexture(tex_title)
-                else:
-                    library_visible_items = 8
-                    start_idx = scroll_y
-                    end_idx = min(len(list_items), start_idx + library_visible_items)
-
-                    def draw_label(tex, tw, th, y_pos, is_sel):
-                        nonlocal marquee_active
-                        max_w = SCREEN_W - 110
-                        overflow = tw - max_w
-                        if overflow > 0 and is_sel:
-                            marquee_active = True
-                            dt = current_ticks - sel_time
-                            pause_start = 1200
-                            speed = 0.04
-                            scroll_time = int(overflow / speed)
-                            pause_end = 1200
-                            total_cycle = pause_start + scroll_time + pause_end + scroll_time
-                            cycle_pos = dt % total_cycle
-                            if cycle_pos < pause_start:
-                                offset = 0
-                            elif cycle_pos < pause_start + scroll_time:
-                                offset = int((cycle_pos - pause_start) * speed)
-                            elif cycle_pos < pause_start + scroll_time + pause_end:
-                                offset = overflow
-                            else:
-                                back_t = cycle_pos - (pause_start + scroll_time + pause_end)
-                                offset = overflow - int(back_t * speed)
-                            offset = max(0, min(overflow, offset))
-                            src = sdl2.SDL_Rect(offset, 0, max_w, th)
-                            dst = sdl2.SDL_Rect(78, y_pos, max_w, th)
-                            sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, src, dst)
-                        else:
-                            draw_w = min(tw, max_w)
-                            src = sdl2.SDL_Rect(0, 0, draw_w, th)
-                            dst = sdl2.SDL_Rect(78, y_pos, draw_w, th)
-                            sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, src, dst)
-
-                    y_start = 86
-                    row_h = 74
-                    for i in range(start_idx, end_idx):
-                        item = list_items[i]
-                        iy = y_start + (i - start_idx) * row_h
-                        
-                        text_col = sel_text if i == sel_index else library_theme["text"]
-                        
-                        if i == sel_index:
-                            sel_x, sel_y, sel_w, sel_h = 20, iy, SCREEN_W - 40, 68
-                            renderer.fill((sel_x, sel_y, sel_w, sel_h), sel_border)
-                            renderer.fill((sel_x + 2, sel_y + 2, sel_w - 4, sel_h - 4), sel_bg)
-
-                        if item["is_dir"]:
-                            renderer.fill((44, iy + 21, 9, 4), library_theme["accent"])
-                            renderer.fill((42, iy + 24, 18, 14), library_theme["accent"])
-                            tex, tw, th = render_text(item["name"], font_ui_medium, text_col)
-                            if tex:
-                                title_y = iy + 16
-                                draw_label(tex, tw, th, title_y, i == sel_index)
-                                sdl2.SDL_DestroyTexture(tex)
-                        else:
-                            title, _ = get_book_display_metadata(item["name"])
-                            icon_bg = sel_bg if i == sel_index else library_theme["bg"]
-                            draw_book_icon(renderer, 42, iy + 23, library_theme["accent"], icon_bg)
-                            sdlttf.TTF_SetFontStyle(font_ui_medium, sdlttf.TTF_STYLE_BOLD)
-                            tex, tw, th = render_text(title, font_ui_medium, text_col)
-                            sdlttf.TTF_SetFontStyle(font_ui_medium, sdlttf.TTF_STYLE_NORMAL)
-                            if tex:
-                                title_y = iy + 16
-                                draw_label(tex, tw, th, title_y, i == sel_index)
-                                sdl2.SDL_DestroyTexture(tex)
-
-                renderer.fill((0, SCREEN_H - 58, SCREEN_W, 1), library_theme["divider"])
-                footer = f"A: Open   B: {'List' if library_view_mode == 'grid' else 'Grid'}   L/R: Theme   SELECT: Info   [START] Exit"
-                tex, tw, th = render_text(footer, font_small, library_theme["secondary"])
-                if tex:
-                    sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(32, SCREEN_H - 38, tw, th))
-                    sdl2.SDL_DestroyTexture(tex)
-
+                marquee_active = draw_browse_view(
+                    renderer, theme_idx, base_path, current_path, folders, files,
+                    sel_index, scroll_y, library_view_mode, current_ticks, sel_time,
+                    font_large, font_small, font_medium, render_text, cover_manager
+                )
             elif render_state == STATE_READER:
                 reader_w, reader_h = get_reader_view_size()
-                reader_angle = reader_rotation_idx * 90
-                drawing_rotated = reader_rotation_idx != 0
-                if drawing_rotated:
-                    target = ensure_reader_target(reader_w, reader_h)
-                    if target:
-                        sdl2.SDL_SetRenderTarget(renderer.sdlrenderer, target)
-                        renderer.clear(theme["bg"])
-                    else:
-                        drawing_rotated = False
-                        reader_w, reader_h = SCREEN_W, SCREEN_H
-
-                y_pos = 50
-                max_y = reader_h - 55 # Leave room for footer
-                max_content_w = max(100, reader_w - (margin_side * 2))
-                i = reader_scroll_y
-                while i < len(reader_lines):
-                    item = reader_lines[i]
-                    if isinstance(item, dict) and item.get("type") == "image":
-                        cached = get_inline_image(item["src"], max_content_w, reader_h - 110)
-                        if cached:
-                            tex = cached["tex"]
-                            iw = cached["w"]
-                            ih = cached["h"]
-                            step = ih + 12
-                            if y_pos > 50 and (y_pos + step > max_y):
-                                break
-                            draw_x = margin_side + (max_content_w - iw) // 2
-                            draw_y = y_pos
-                            sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(draw_x, draw_y, iw, ih))
-                            y_pos += step
-                        else:
-                            fn = os.path.basename(item["src"])
-                            tex, tw, th = render_text(f"[ {fn} ]", font_small, theme["sel"])
-                            if tex:
-                                sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(margin_side, y_pos, tw, th))
-                                sdl2.SDL_DestroyTexture(tex)
-                            y_pos += line_height
-                    elif isinstance(item, dict) and item.get("type") == "footnote":
-                        marker = item.get("marker", "(*)")
-                        f_lines = item.get("lines", [])
-                        f_pad_x = 18
-                        f_pad_y = 10
-                        f_line_h = int(line_height * 0.85)
-                        box_w = max_content_w
-                        box_h = f_pad_y * 2 + (len(f_lines) + 1) * f_line_h
-                        step = box_h + 14
-                        if y_pos > 50 and (y_pos + step > max_y):
-                            break
-                        
-                        # Glassmorphic Callout Box
-                        renderer.fill((margin_side, y_pos, box_w, box_h), theme.get("header", theme["bg"]))
-                        renderer.fill((margin_side, y_pos, 4, box_h), theme["sel"])
-                        divider_col = theme.get("divider", theme["header"])
-                        renderer.fill((margin_side, y_pos, box_w, 1), divider_col)
-                        renderer.fill((margin_side, y_pos + box_h - 1, box_w, 1), divider_col)
-                        renderer.fill((margin_side + box_w - 1, y_pos, 1, box_h), divider_col)
-                        
-                        cur_fy = y_pos + f_pad_y
-                        tex_title, tw, th = render_text(f"💡 Footnote {marker}:", font_small, theme["sel"])
-                        if tex_title:
-                            sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_title, None, sdl2.SDL_Rect(margin_side + f_pad_x, cur_fy, min(tw, box_w - f_pad_x * 2), th))
-                            sdl2.SDL_DestroyTexture(tex_title)
-                        cur_fy += f_line_h
-                        
-                        for fl in f_lines:
-                            tex_fl, fw, fh = render_text(fl, font_small, theme.get("secondary", theme["text"]))
-                            if tex_fl:
-                                sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_fl, None, sdl2.SDL_Rect(margin_side + f_pad_x, cur_fy, min(fw, box_w - f_pad_x * 2), fh))
-                                sdl2.SDL_DestroyTexture(tex_fl)
-                            cur_fy += f_line_h
-                            
-                        y_pos += step
-                    elif item == "":
-                        step = max(2, line_height // 6)
-                        if y_pos + step > max_y:
-                            break
-                        y_pos += step
-                    else:
-                        line = item
-                        step = line_height
-                        if y_pos + step > max_y:
-                            break
-                        if word_spacing_mult == 1.0:
-                            tex, tw, th = render_text(line, font_medium, theme["text"])
-                            if tex:
-                                sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(margin_side, y_pos, min(tw, max_content_w), th))
-                                sdl2.SDL_DestroyTexture(tex)
-                        else:
-                            # Render word-by-word with true custom word spacing
-                            cur_x = margin_side
-                            words = line.split(' ')
-                            for w_item in words:
-                                if not w_item:
-                                    cur_x += space_width
-                                    continue
-                                tex_w, tw, th = render_text(w_item, font_medium, theme["text"])
-                                if tex_w:
-                                    if cur_x + tw <= margin_side + max_content_w:
-                                        sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_w, None, sdl2.SDL_Rect(cur_x, y_pos, tw, th))
-                                    sdl2.SDL_DestroyTexture(tex_w)
-                                cur_x += tw + space_width
-                        y_pos += step
-                    i += 1
-                
-                page_items_drawn = max(1, i - reader_scroll_y)
-                
-                # HUD Elements
-                if show_hud:
-                    if len(reader_lines) > 0:
-                        progress = min(1.0, reader_scroll_y / max(1, len(reader_lines) - lines_per_page))
-                        bar_w = int((reader_w - (margin_side * 2)) * progress)
-                        renderer.fill((margin_side, reader_h - 10, reader_w - (margin_side * 2), 5), theme["sel"])
-                        renderer.fill((margin_side, reader_h - 10, bar_w, 5), theme["text"])
-                    
-                    curr_chap = "Chapter 1"
-                    for ch_title, ch_line in chapter_offsets:
-                        if ch_line <= reader_scroll_y:
-                            curr_chap = ch_title
-                        else:
-                            break
-                    
-                    total_pages = max(1, len(reader_lines) // lines_per_page + 1)
-                    curr_page = reader_scroll_y // lines_per_page + 1
-                    
-                    book_title, _ = get_book_display_metadata(os.path.basename(current_filepath))
-                    if curr_chap:
-                        hud_top = f"{book_title} - {curr_chap} - Page {curr_page}/{total_pages}"
-                    else:
-                        hud_top = f"{book_title} - Page {curr_page}/{total_pages}"
-                    tex, tw, th = render_text(hud_top, font_small, theme["text"])
-                    if tex:
-                        sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(margin_side, 15, min(tw, reader_w - (margin_side * 2)), th))
-                        sdl2.SDL_DestroyTexture(tex)
-                    
-                    footer = f"R2: Typography | Size: {current_font_size} | L/R: Aa | X: Rotate | Y: Theme | B/L2: TOC | SELECT: LIB"
-                    tex, tw, th = render_text(footer, font_small, theme["text"])
-                    if tex:
-                        sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(margin_side, reader_h - 45, min(tw, reader_w - (margin_side * 2)), th))
-                        sdl2.SDL_DestroyTexture(tex)
-
-                if drawing_rotated:
-                    sdl2.SDL_SetRenderTarget(renderer.sdlrenderer, None)
-                    renderer.clear(theme["bg"])
-                    src_rect = sdl2.SDL_Rect(0, 0, reader_w, reader_h)
-                    dst_rect = sdl2.SDL_Rect((SCREEN_W - reader_w) // 2, (SCREEN_H - reader_h) // 2, reader_w, reader_h)
-                    sdl2.SDL_RenderCopyEx(renderer.sdlrenderer, target, src_rect, dst_rect, reader_angle, None, sdl2.SDL_FLIP_NONE)
-
+                target = ensure_reader_target(reader_w, reader_h)
+                page_items_drawn = draw_book_reader_view(
+                    renderer, theme, target, reader_w, reader_h, reader_lines, reader_scroll_y,
+                    lines_per_page, line_height, font_medium, font_small, render_text,
+                    current_filepath, chapter_offsets, show_hud, current_font_size,
+                    word_spacing_mult, margin_side, space_width, inline_image_cache,
+                    image_loader, reader_rotation_idx
+                )
             elif render_state == STATE_TOC:
-                renderer.fill((0, 0, SCREEN_W, 60), theme["header"])
-                if len(book_images) > 0:
-                    tab0 = f"[ CHAPTERS ({len(chapter_offsets)}) ]" if toc_tab == 0 else f"CHAPTERS ({len(chapter_offsets)})"
-                    tab1 = f"[ IMAGES ({len(book_images)}) ]" if toc_tab == 1 else f"IMAGES ({len(book_images)})"
-                    toc_title = f"{tab0}    |    {tab1}  (L1/R1)"
-                else:
-                    toc_title = "CONTENTS"
-                tex, tw, th = render_text(toc_title, font_medium, theme["text"])
-                if tex:
-                    sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(SCREEN_W//2 - tw//2, 10, min(tw, SCREEN_W-40), th))
-                    sdl2.SDL_DestroyTexture(tex)
-                    
-                if toc_tab == 0:
-                    start_idx = max(0, toc_sel_index - visible_items // 2)
-                    end_idx = min(len(chapter_offsets), start_idx + visible_items)
-                    
-                    y_start = 80
-                    for i in range(start_idx, end_idx):
-                        ch_title, ch_line = chapter_offsets[i]
-                        iy = y_start + (i - start_idx) * 40
-                        
-                        if i == toc_sel_index:
-                            renderer.fill((0, iy, SCREEN_W, 40), theme["sel"])
-                            
-                        tex, tw, th = render_text(ch_title, font_small, theme["text"])
-                        if tex:
-                            sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(40, iy + 5, min(tw, SCREEN_W-80), th))
-                            sdl2.SDL_DestroyTexture(tex)
-                            
-                    footer = "D-Pad / Sticks: Move   |   A: Select Chapter   |   L1/R1: Switch Tab   |   B: Cancel"
-                else:
-                    total_imgs = len(book_images)
-                    items_per_page = 8
-                    cols = 4
-                    start_page = (toc_img_sel_index // items_per_page) * items_per_page
-                    end_page = min(total_imgs, start_page + items_per_page)
-
-                    margin_x = 44
-                    gap_x = 24
-                    thumb_w = 216
-                    thumb_h = 260
-                    gap_y = 40
-                    y_start = 80
-
-                    for idx in range(start_page, end_page):
-                        slot = idx - start_page
-                        row = slot // cols
-                        col = slot % cols
-                        cell_x = margin_x + col * (thumb_w + gap_x)
-                        cell_y = y_start + row * (thumb_h + gap_y)
-                        is_sel = (idx == toc_img_sel_index)
-
-                        # Card Background
-                        renderer.fill((cell_x, cell_y, thumb_w, thumb_h), theme["header"])
-
-                        # Render Thumbnail image
-                        img_path = book_images[idx]
-                        thumb_info = get_book_img_thumbnail(img_path, thumb_w - 8, thumb_h - 8)
-                        if thumb_info and thumb_info["tex"]:
-                            tw = thumb_info["w"]
-                            th = thumb_info["h"]
-                            dst_x = cell_x + (thumb_w - tw) // 2
-                            dst_y = cell_y + (thumb_h - th) // 2
-                            sdl2.SDL_RenderCopy(renderer.sdlrenderer, thumb_info["tex"], None, sdl2.SDL_Rect(dst_x, dst_y, tw, th))
-                        else:
-                            # Placeholder card
-                            tex_ph, pw, ph = render_text(f"Img {idx + 1}", font_small, theme.get("secondary", theme["text"]))
-                            if tex_ph:
-                                sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_ph, None, sdl2.SDL_Rect(cell_x + (thumb_w - pw)//2, cell_y + (thumb_h - ph)//2, pw, ph))
-                                sdl2.SDL_DestroyTexture(tex_ph)
-
-                        # Selection border
-                        if is_sel:
-                            renderer.fill((cell_x - 3, cell_y - 3, thumb_w + 6, 3), theme["sel"])
-                            renderer.fill((cell_x - 3, cell_y + thumb_h, thumb_w + 6, 3), theme["sel"])
-                            renderer.fill((cell_x - 3, cell_y, 3, thumb_h), theme["sel"])
-                            renderer.fill((cell_x + thumb_w, cell_y, 3, thumb_h), theme["sel"])
-                        else:
-                            renderer.fill((cell_x - 1, cell_y - 1, thumb_w + 2, 1), theme.get("divider", theme["header"]))
-                            renderer.fill((cell_x - 1, cell_y + thumb_h, thumb_w + 2, 1), theme.get("divider", theme["header"]))
-                            renderer.fill((cell_x - 1, cell_y, 1, thumb_h), theme.get("divider", theme["header"]))
-                            renderer.fill((cell_x + thumb_w, cell_y, 1, thumb_h), theme.get("divider", theme["header"]))
-
-                        # Label below thumbnail
-                        img_fn = os.path.basename(img_path)
-                        if len(img_fn) > 18:
-                            img_fn = img_fn[:15] + "..."
-                        lbl_text = f"{idx + 1}. {img_fn}"
-                        lbl_color = theme["sel"] if is_sel else theme["text"]
-                        tex_lbl, lw, lh = render_text(lbl_text, font_small, lbl_color)
-                        if tex_lbl:
-                            sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_lbl, None, sdl2.SDL_Rect(cell_x + (thumb_w - min(lw, thumb_w))//2, cell_y + thumb_h + 6, min(lw, thumb_w), lh))
-                            sdl2.SDL_DestroyTexture(tex_lbl)
-
-                    footer = "D-Pad / Sticks: Move   |   A: Jump to Text   |   X: Fullscreen   |   L1/R1: Tab   |   B: Cancel"
-
-                tex, tw, th = render_text(footer, font_small, theme["text"])
-                if tex:
-                    sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(20, SCREEN_H - 40, tw, th))
-                    sdl2.SDL_DestroyTexture(tex)
-
+                draw_toc_view(
+                    renderer, theme, toc_tab, toc_sel_index, toc_img_sel_index,
+                    chapter_offsets, book_images, visible_items, font_medium, font_small,
+                    render_text, image_loader, book_img_thumb_cache
+                )
             elif render_state == STATE_IMAGE_VIEW:
-                renderer.clear(theme["bg"])
                 tex = get_current_image_texture()
-                if tex and image_w > 0 and image_h > 0:
-                    vw, vh = SCREEN_W, SCREEN_H
-                    angle = float(image_rotation * 90)
-                    eff_w, eff_h = (image_h, image_w) if image_rotation % 2 == 1 else (image_w, image_h)
-                    
-                    fit_zoom = min(float(vw) / eff_w, float(vh) / eff_h)
-                    zoom = image_zoom if image_zoom > 0 else fit_zoom
-                    
-                    scaled_w = int(image_w * zoom)
-                    scaled_h = int(image_h * zoom)
-                    
-                    draw_x = (vw - scaled_w) // 2 + image_pan_x
-                    draw_y = (vh - scaled_h) // 2 + image_pan_y
-                    
-                    dst_rect = sdl2.SDL_Rect(draw_x, draw_y, scaled_w, scaled_h)
-                    if angle != 0.0:
-                        sdl2.SDL_RenderCopyEx(renderer.sdlrenderer, tex, None, dst_rect, angle, None, sdl2.SDL_FLIP_NONE)
-                    else:
-                        sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, dst_rect)
-                else:
-                    msg = "Cannot load this image"
-                    tex_err, ew, eh = render_text(msg, font_medium, theme["text"])
-                    if tex_err:
-                        sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_err, None, sdl2.SDL_Rect((SCREEN_W-ew)//2, (SCREEN_H-eh)//2, ew, eh))
-                        sdl2.SDL_DestroyTexture(tex_err)
-                
-                if show_hud and book_images:
-                    # Top HUD
-                    renderer.fill((0, 0, SCREEN_W, 55), theme["header"])
-                    renderer.fill((0, 53, SCREEN_W, 2), theme["sel"])
-                    
-                    cur_img_name = os.path.basename(book_images[current_image_idx])
-                    book_title, _ = get_book_display_metadata(os.path.basename(current_filepath))
-                    hud_top = f"{book_title} - Image {current_image_idx + 1}/{len(book_images)} - {cur_img_name}"
-                    tex_top, tw, th = render_text(hud_top, font_small, theme["text"])
-                    if tex_top:
-                        sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_top, None, sdl2.SDL_Rect(20, 15, min(tw, SCREEN_W - 40), th))
-                        sdl2.SDL_DestroyTexture(tex_top)
-                    
-                    # Bottom HUD
-                    renderer.fill((0, SCREEN_H - 55, SCREEN_W, 55), theme["header"])
-                    renderer.fill((0, SCREEN_H - 55, SCREEN_W, 2), theme["sel"])
-                    zoom_str = "Fit" if image_zoom <= 0 else f"{int(image_zoom*100)}%"
-                    hud_bot = f"L/R: Switch Image | Y: Zoom ({zoom_str}) | X: Rotate | B: Back to Reading"
-                    tex_bot, bw, bh = render_text(hud_bot, font_small, theme["text"])
-                    if tex_bot:
-                        sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_bot, None, sdl2.SDL_Rect(20, SCREEN_H - 38, min(bw, SCREEN_W - 40), bh))
-                        sdl2.SDL_DestroyTexture(tex_bot)
+                draw_image_view(
+                    renderer, theme, tex, image_w, image_h, image_zoom,
+                    image_pan_x, image_pan_y, image_rotation, show_hud, book_images,
+                    current_image_idx, current_filepath, font_medium, font_small, render_text
+                )
 
             if state == STATE_ABOUT:
                 draw_about_dialog(renderer, theme_idx, font_medium, font_large, font_small, render_text)
@@ -2044,9 +1337,7 @@ def main():
             
         sdl2.SDL_Delay(16)
 
-    cover_thread_running[0] = False
-    for _t in _cover_threads: _t.join(timeout=0.3)
-    clear_cover_cache()
+    cover_manager.shutdown()
     clear_book_img_thumb_cache()
     if font_medium:
         sdlttf.TTF_CloseFont(font_medium)
