@@ -1312,6 +1312,12 @@ def main():
     typography_sel_idx = 0
     image_view_source = "reader"
     
+    orig_font_size = 34
+    orig_line_spacing = 1.32
+    orig_word_spacing = 1.0
+    orig_margin_side = 20
+    orig_theme_idx = 0
+    
     left_axis_held = False
     last_left_axis_time = 0
     right_axis_held = False
@@ -1500,8 +1506,14 @@ def main():
                             l2_pressed = True
                             if state == STATE_READER:
                                 if show_typography_popup:
+                                    current_font_size = orig_font_size
+                                    line_spacing_mult = orig_line_spacing
+                                    word_spacing_mult = orig_word_spacing
+                                    margin_side = orig_margin_side
+                                    theme_idx = orig_theme_idx
+                                    write_theme_idx(theme_idx)
+                                    recalculate_layout()
                                     show_typography_popup = False
-                                    save_current_reader_state()
                                 state = STATE_TOC
                                 toc_tab = 0
                                 toc_sel_index = 0
@@ -1526,11 +1538,25 @@ def main():
                         if not r2_pressed:
                             r2_pressed = True
                             if state == STATE_READER:
-                                show_typography_popup = not show_typography_popup
                                 if show_typography_popup:
-                                    typography_sel_idx = 0
+                                    # Cancel & Revert
+                                    current_font_size = orig_font_size
+                                    line_spacing_mult = orig_line_spacing
+                                    word_spacing_mult = orig_word_spacing
+                                    margin_side = orig_margin_side
+                                    theme_idx = orig_theme_idx
+                                    write_theme_idx(theme_idx)
+                                    recalculate_layout()
+                                    show_typography_popup = False
                                 else:
-                                    save_current_reader_state()
+                                    # Open & Snapshot
+                                    orig_font_size = current_font_size
+                                    orig_line_spacing = line_spacing_mult
+                                    orig_word_spacing = word_spacing_mult
+                                    orig_margin_side = margin_side
+                                    orig_theme_idx = theme_idx
+                                    typography_sel_idx = 0
+                                    show_typography_popup = True
                                 needs_redraw = True
                     elif val < 8000:
                         r2_pressed = False
@@ -1667,9 +1693,21 @@ def main():
                             if reader_lines:
                                 reader_scroll_y = max(0, min(reader_scroll_y, len(reader_lines) - lines_per_page))
                             needs_redraw = True
-                        elif btn in (sdl2.SDL_CONTROLLER_BUTTON_A, sdl2.SDL_CONTROLLER_BUTTON_B, sdl2.SDL_CONTROLLER_BUTTON_BACK):
+                        elif btn == sdl2.SDL_CONTROLLER_BUTTON_B: # Physical A: Save
                             show_typography_popup = False
                             save_current_reader_state()
+                            toast_msg = "Saved Typography Settings"
+                            toast_timer = current_ticks
+                            needs_redraw = True
+                        elif btn in (sdl2.SDL_CONTROLLER_BUTTON_A, sdl2.SDL_CONTROLLER_BUTTON_BACK): # Physical B / Select: Cancel
+                            current_font_size = orig_font_size
+                            line_spacing_mult = orig_line_spacing
+                            word_spacing_mult = orig_word_spacing
+                            margin_side = orig_margin_side
+                            theme_idx = orig_theme_idx
+                            write_theme_idx(theme_idx)
+                            recalculate_layout()
+                            show_typography_popup = False
                             needs_redraw = True
                     else:
                         if btn == sdl2.SDL_CONTROLLER_BUTTON_DPAD_UP:
@@ -2348,77 +2386,6 @@ def main():
                         sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(margin_side, reader_h - 45, min(tw, reader_w - (margin_side * 2)), th))
                         sdl2.SDL_DestroyTexture(tex)
 
-                # Render Typography & Spacing Modal Popup
-                if show_typography_popup:
-                    renderer.fill((0, 0, reader_w, reader_h), (0, 0, 0, 160))
-                    
-                    pw = min(680, reader_w - 40)
-                    ph = min(460, reader_h - 40)
-                    px = (reader_w - pw) // 2
-                    py = (reader_h - ph) // 2
-                    
-                    accent_col = theme.get("sel", (139, 69, 19))
-                    header_col = theme.get("header", (28, 28, 36))
-                    text_col = theme.get("text", (220, 220, 220, 255))
-                    
-                    renderer.fill((px, py, pw, ph), (18, 18, 24))
-                    renderer.fill((px, py, pw, 3), accent_col)
-                    renderer.fill((px, py + ph - 3, pw, 3), accent_col)
-                    renderer.fill((px, py, 3, ph), accent_col)
-                    renderer.fill((px + pw - 3, py, 3, ph), accent_col)
-                    
-                    header_h = 58
-                    renderer.fill((px + 3, py + 3, pw - 6, header_h), header_col)
-                    renderer.fill((px + 3, py + header_h + 3, pw - 6, 1), (60, 60, 75))
-                    
-                    tex_hdr, hw, hh = render_text("CÀI ĐẶT HIỂN THỊ (TYPOGRAPHY)", font_ui_medium, accent_col)
-                    if tex_hdr:
-                        sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_hdr, None, sdl2.SDL_Rect(px + (pw - hw) // 2, py + (header_h - hh) // 2 + 3, hw, hh))
-                        sdl2.SDL_DestroyTexture(tex_hdr)
-                        
-                    options = [
-                        ("Cỡ chữ (Font Size)", f"{current_font_size} px"),
-                        ("Giãn dòng (Line Spacing)", f"{line_spacing_mult:.2f}x"),
-                        ("Giãn từ (Word Spacing)", f"{word_spacing_mult:.1f}x"),
-                        ("Căn lề (Side Margin)", f"{margin_side} px"),
-                        ("Chủ đề màu (Theme)", THEMES[theme_idx].get("name", f"Theme {theme_idx+1}"))
-                    ]
-                    
-                    row_y_start = py + header_h + 16
-                    row_h = 56
-                    for r_idx, (label, val_str) in enumerate(options):
-                        ry = row_y_start + r_idx * (row_h + 6)
-                        rx = px + 24
-                        rw = pw - 48
-                        is_sel = (r_idx == typography_sel_idx)
-                        
-                        if is_sel:
-                            renderer.fill((rx, ry, rw, row_h), accent_col)
-                            renderer.fill((rx + 2, ry + 2, rw - 4, row_h - 4), (34, 40, 52))
-                            label_col = (255, 255, 255, 255)
-                            val_col = accent_col
-                        else:
-                            renderer.fill((rx, ry, rw, row_h), (26, 26, 34))
-                            label_col = (180, 185, 195, 255)
-                            val_col = text_col
-                            
-                        tex_lbl, lw, lh = render_text(label, font_small, label_col)
-                        if tex_lbl:
-                            sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_lbl, None, sdl2.SDL_Rect(rx + 16, ry + (row_h - lh) // 2, lw, lh))
-                            sdl2.SDL_DestroyTexture(tex_lbl)
-                            
-                        display_val = f"◀  {val_str}  ▶" if is_sel else val_str
-                        tex_v, vw, vh = render_text(display_val, font_small, val_col)
-                        if tex_v:
-                            sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_v, None, sdl2.SDL_Rect(rx + rw - vw - 16, ry + (row_h - vh) // 2, vw, vh))
-                            sdl2.SDL_DestroyTexture(tex_v)
-                            
-                    footer_y = py + ph - 42
-                    tex_foot, fw, fh = render_text("D-Pad: Chọn & Tăng/Giảm   |   A / B / R2: Đóng & Lưu", font_small, (180, 180, 190, 255))
-                    if tex_foot:
-                        sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_foot, None, sdl2.SDL_Rect(px + (pw - fw) // 2, footer_y, fw, fh))
-                        sdl2.SDL_DestroyTexture(tex_foot)
-
                 if drawing_rotated:
                     sdl2.SDL_SetRenderTarget(renderer.sdlrenderer, None)
                     renderer.clear(theme["bg"])
@@ -2655,6 +2622,79 @@ def main():
                 if tex:
                     sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(pop_x + pop_w//2 - tw//2, pop_y + 130, tw, th))
                     sdl2.SDL_DestroyTexture(tex)
+
+            # Typography Modal Popup on Top of Reader (matching Exit Popup style)
+            if show_typography_popup and state == STATE_READER:
+                sdl2.SDL_SetRenderDrawBlendMode(renderer.sdlrenderer, sdl2.SDL_BLENDMODE_BLEND)
+                sdl2.SDL_SetRenderDrawColor(renderer.sdlrenderer, 0, 0, 0, 160)
+                sdl2.SDL_RenderFillRect(renderer.sdlrenderer, sdl2.SDL_Rect(0, 0, SCREEN_W, SCREEN_H))
+                
+                pop_w = 680
+                pop_h = 470
+                pop_x = (SCREEN_W - pop_w) // 2
+                pop_y = (SCREEN_H - pop_h) // 2
+                
+                renderer.fill((pop_x, pop_y, pop_w, pop_h), theme["sel"])
+                renderer.fill((pop_x + 3, pop_y + 3, pop_w - 6, pop_h - 6), theme["bg"])
+                
+                header_h = 56
+                renderer.fill((pop_x + 3, pop_y + 3, pop_w - 6, header_h), theme.get("header", theme["bg"]))
+                renderer.fill((pop_x + 3, pop_y + header_h + 3, pop_w - 6, 2), theme["sel"])
+                
+                sdlttf.TTF_SetFontStyle(font_ui_medium, sdlttf.TTF_STYLE_BOLD)
+                tex_hdr, hw, hh = render_text("CÀI ĐẶT HIỂN THỊ (TYPOGRAPHY)", font_ui_medium, theme["text"])
+                sdlttf.TTF_SetFontStyle(font_ui_medium, sdlttf.TTF_STYLE_NORMAL)
+                if tex_hdr:
+                    sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_hdr, None, sdl2.SDL_Rect(pop_x + (pop_w - hw) // 2, pop_y + (header_h - hh) // 2 + 3, hw, hh))
+                    sdl2.SDL_DestroyTexture(tex_hdr)
+                    
+                options = [
+                    ("Cỡ chữ (Font Size)", f"{current_font_size} px"),
+                    ("Giãn dòng (Line Spacing)", f"{line_spacing_mult:.2f}x"),
+                    ("Giãn từ (Word Spacing)", f"{word_spacing_mult:.1f}x"),
+                    ("Căn lề (Side Margin)", f"{margin_side} px"),
+                    ("Chủ đề màu (Theme)", THEMES[theme_idx].get("name", f"Theme {theme_idx+1}"))
+                ]
+                
+                row_y_start = pop_y + header_h + 18
+                row_h = 56
+                for r_idx, (label, val_str) in enumerate(options):
+                    ry = row_y_start + r_idx * (row_h + 8)
+                    rx = pop_x + 24
+                    rw = pop_w - 48
+                    is_sel = (r_idx == typography_sel_idx)
+                    
+                    if is_sel:
+                        renderer.fill((rx, ry, rw, row_h), theme["sel"])
+                        renderer.fill((rx + 2, ry + 2, rw - 4, row_h - 4), theme.get("header", theme["bg"]))
+                        label_col = theme["text"]
+                        val_col = theme["sel"]
+                    else:
+                        renderer.fill((rx, ry, rw, row_h), theme.get("header", theme["bg"]))
+                        label_col = theme["text"]
+                        val_col = theme["text"]
+                        
+                    sdlttf.TTF_SetFontStyle(font_small, sdlttf.TTF_STYLE_BOLD if is_sel else sdlttf.TTF_STYLE_NORMAL)
+                    tex_lbl, lw, lh = render_text(label, font_small, label_col)
+                    sdlttf.TTF_SetFontStyle(font_small, sdlttf.TTF_STYLE_NORMAL)
+                    if tex_lbl:
+                        sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_lbl, None, sdl2.SDL_Rect(rx + 16, ry + (row_h - lh) // 2, lw, lh))
+                        sdl2.SDL_DestroyTexture(tex_lbl)
+                        
+                    display_val = f"◀  {val_str}  ▶" if is_sel else val_str
+                    sdlttf.TTF_SetFontStyle(font_small, sdlttf.TTF_STYLE_BOLD if is_sel else sdlttf.TTF_STYLE_NORMAL)
+                    tex_v, vw, vh = render_text(display_val, font_small, val_col)
+                    sdlttf.TTF_SetFontStyle(font_small, sdlttf.TTF_STYLE_NORMAL)
+                    if tex_v:
+                        sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_v, None, sdl2.SDL_Rect(rx + rw - vw - 16, ry + (row_h - vh) // 2, vw, vh))
+                        sdl2.SDL_DestroyTexture(tex_v)
+                        
+                footer_y = pop_y + pop_h - 42
+                msg_foot = "A: Lưu   |   B / R2: Hủy bỏ   |   D-Pad: Chọn & Chỉnh"
+                tex_foot, fw, fh = render_text(msg_foot, font_small, theme["text"])
+                if tex_foot:
+                    sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_foot, None, sdl2.SDL_Rect(pop_x + (pop_w - fw) // 2, footer_y, fw, fh))
+                    sdl2.SDL_DestroyTexture(tex_foot)
 
             # Toast notification
             if toast_msg and (current_ticks - toast_timer < 2000):
