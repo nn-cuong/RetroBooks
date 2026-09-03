@@ -92,6 +92,13 @@ THEMES = [
         "text": sdl2.SDL_Color(217, 226, 213, 255),# #D9E2D5
         "header": sdl2.ext.Color(16, 23, 17),      # #101711
         "sel": sdl2.ext.Color(73, 98, 79),         # #49624F
+    },
+    {
+        "name": "Coastal Earth",
+        "bg": sdl2.ext.Color(44, 54, 57),          # #2C3639 Dark Charcoal Blue
+        "text": sdl2.SDL_Color(220, 215, 201, 255),# #DCD7C9 Warm Ivory
+        "header": sdl2.ext.Color(63, 78, 79),      # #3F4E4F Muted Slate Green
+        "sel": sdl2.ext.Color(162, 123, 92),       # #A27B5C Dusty Earth Brown
     }
 ]
 
@@ -168,6 +175,19 @@ LIBRARY_THEMES = [
         "sel_bg": sdl2.ext.Color(41, 54, 45),      # #29362D
         "sel_text": sdl2.SDL_Color(240, 244, 237, 255),# #F0F4ED
         "sel_sec": sdl2.SDL_Color(184, 195, 184, 255), # #B8C3B8
+    },
+    {
+        "name": "Coastal Earth",
+        "bg": sdl2.ext.Color(44, 54, 57),          # #2C3639 Dark Charcoal Blue
+        "header": sdl2.ext.Color(63, 78, 79),      # #3F4E4F Muted Slate Green
+        "divider": sdl2.ext.Color(74, 91, 92),     # #4A5B5C Muted Slate Divider
+        "text": sdl2.SDL_Color(220, 215, 201, 255),# #DCD7C9 Warm Ivory
+        "secondary": sdl2.SDL_Color(170, 166, 155, 255),# #AAA69B Muted Ivory
+        "accent": sdl2.ext.Color(162, 123, 92),    # #A27B5C Dusty Earth Brown
+        "sel_border": sdl2.ext.Color(162, 123, 92),# #A27B5C Dusty Earth Brown
+        "sel_bg": sdl2.ext.Color(58, 68, 71),      # #3A4447 Deep Slate
+        "sel_text": sdl2.SDL_Color(240, 237, 228, 255),# #F0EDE4 Pure Ivory
+        "sel_sec": sdl2.SDL_Color(190, 185, 172, 255), # #BEB9AC
     }
 ]
 
@@ -225,26 +245,31 @@ STATE_READER = 1
 STATE_TOC = 2
 STATE_QUIT_CONFIRM = 3
 STATE_IMAGE_VIEW = 4
+STATE_ABOUT = 5
 
 def get_directory_contents(path):
+    folders = []
+    files = []
+    valid_exts_set = {'.txt', '.md', '.log', '.csv', '.json', '.epub', '.fb2', '.mobi', '.azw', '.azw3'}
     try:
-        items = os.listdir(path)
-        folders = []
-        files = []
-        valid_exts = ['.txt', '.md', '.log', '.csv', '.json', '.epub', '.fb2', '.mobi', '.azw', '.azw3']
-        for item in items:
-            full_path = os.path.join(path, item)
-            if os.path.isdir(full_path):
-                folders.append(item)
-            else:
-                ext = os.path.splitext(item)[1].lower()
-                if ext in valid_exts:
-                    files.append(item)
-        folders.sort(key=str.lower)
-        files.sort(key=str.lower)
-        return folders, files
-    except Exception as e:
-        return [], []
+        with os.scandir(path) as it:
+            for entry in it:
+                if entry.name.startswith('.'):
+                    continue
+                try:
+                    if entry.is_dir(follow_symlinks=False):
+                        folders.append(entry.name)
+                    else:
+                        ext = os.path.splitext(entry.name)[1].lower()
+                        if ext in valid_exts_set:
+                            files.append(entry.name)
+                except OSError:
+                    pass
+    except Exception:
+        pass
+    folders.sort(key=str.lower)
+    files.sort(key=str.lower)
+    return folders, files
 
 def get_book_display_metadata(filename):
     """Derive library label from a filename without changing the real path."""
@@ -505,7 +530,7 @@ def main():
         if sdl2.SDL_IsGameController(i):
             controllers.append(sdl2.SDL_GameControllerOpen(i))
 
-    window = sdl2.ext.Window("RetroRead", size=(SCREEN_W, SCREEN_H), flags=sdl2.SDL_WINDOW_FULLSCREEN_DESKTOP)
+    window = sdl2.ext.Window("RetroBooks", size=(SCREEN_W, SCREEN_H), flags=sdl2.SDL_WINDOW_FULLSCREEN_DESKTOP)
     window.show()
     renderer = sdl2.ext.Renderer(window, flags=sdl2.SDL_RENDERER_ACCELERATED | sdl2.SDL_RENDERER_PRESENTVSYNC)
     reader_target = None
@@ -566,19 +591,20 @@ def main():
     theme_idx = load_theme_idx()
     reader_rotation_idx = load_reader_rotation_idx()
     library_view_mode = load_library_view() # "list" or "grid"
-    cover_cache = {} # filepath -> (texture, orig_w, orig_h)
+    cover_cache = {}  # filepath -> (SDL_Texture, w, h)
 
+    # -----------------------------------------------------------------------
+    # EPUB cover extractor (runs in background thread, no SDL calls here)
+    # -----------------------------------------------------------------------
     def extract_epub_cover_data(filepath):
         import zipfile
         try:
             with zipfile.ZipFile(filepath, 'r') as zf:
                 names = zf.namelist()
                 img_exts = ('.jpg', '.jpeg', '.png', '.webp', '.bmp')
-                # 1. Look for 'cover' in filename
                 covers = [n for n in names if any(n.lower().endswith(ext) for ext in img_exts) and 'cover' in os.path.basename(n).lower() and not n.startswith('__MACOSX')]
                 if covers:
                     return zf.read(covers[0])
-                # 2. Look for any valid image
                 imgs = [n for n in names if any(n.lower().endswith(ext) for ext in img_exts) and not n.startswith('__MACOSX') and not os.path.basename(n).startswith('.')]
                 if imgs:
                     return zf.read(imgs[0])
@@ -586,38 +612,158 @@ def main():
             pass
         return None
 
+    # -----------------------------------------------------------------------
+    # Fast Async Cover System: background thread + disk cache + downscaling
+    # Cover cell on screen: 170x200 px. We store covers at 255x300 (1.5x for
+    # crisp rendering) — that is the 3/4-of-source downscale quality setting.
+    # -----------------------------------------------------------------------
+    import threading, hashlib
+    import queue as _queue_mod
+    COVER_CACHE_DIR = "/mnt/SDCARD/.cover_cache"
+    try:
+        os.makedirs(COVER_CACHE_DIR, exist_ok=True)
+    except Exception:
+        pass
+
+    def _cover_disk_path(fp):
+        h = hashlib.sha1(fp.encode("utf-8", errors="replace")).hexdigest()[:16]
+        return os.path.join(COVER_CACHE_DIR, h + ".bmp")
+
+    def _decode_cover(img_data):
+        """CPU-side: decode bytes -> SDL_Surface at full native resolution.
+        No downscaling here: GPU handles display scaling at render time for
+        maximum sharpness at any cover cell size."""
+        rw = sdl2.SDL_RWFromConstMem(img_data, len(img_data))
+        src = sdlimage.IMG_Load_RW(rw, 1)
+        if not src:
+            return None, 0, 0
+        sw, sh = src.contents.w, src.contents.h
+        if sw <= 0 or sh <= 0:
+            sdl2.SDL_FreeSurface(src)
+            return None, 0, 0
+        return src, sw, sh
+
+    cover_pending        = set()              # guarded by _cover_q_lock
+    _cover_q             = _queue_mod.Queue() # blocking FIFO for workers
+    _cover_q_lock        = threading.Lock()   # guard cover_pending
+    cover_ready          = {}                 # filepath -> (surf,w,h) or (None,0,0)
+    cover_ready_lock     = threading.Lock()
+    cover_thread_running = [True]
+
+    def _cover_worker():
+        while cover_thread_running[0]:
+            try:
+                filepath = _cover_q.get(timeout=0.5)
+            except Exception:
+                continue
+            disk = _cover_disk_path(filepath)
+            img_data = None
+            if os.path.exists(disk):
+                try:
+                    with open(disk, "rb") as f:
+                        img_data = f.read()
+                except Exception:
+                    img_data = None
+            if not img_data:
+                _ext = os.path.splitext(filepath)[1].lower()
+                if _ext == '.epub':
+                    img_data = extract_epub_cover_data(filepath)
+            if not img_data:
+                with cover_ready_lock:
+                    cover_ready[filepath] = (None, 0, 0)
+                _cover_q.task_done()
+                continue
+            surf, dw, dh = _decode_cover(img_data)
+            if surf and dw > 0:
+                if not os.path.exists(disk):
+                    try:
+                        sdl2.SDL_SaveBMP(surf, disk.encode("utf-8"))
+                    except Exception:
+                        pass
+                with cover_ready_lock:
+                    cover_ready[filepath] = (surf, dw, dh)
+            else:
+                if surf:
+                    sdl2.SDL_FreeSurface(surf)
+                with cover_ready_lock:
+                    cover_ready[filepath] = (None, 0, 0)
+            _cover_q.task_done()
+
+    # 3 parallel decode threads
+    _cover_threads = []
+    for _i in range(3):
+        _t = threading.Thread(target=_cover_worker, daemon=True)
+        _t.start()
+        _cover_threads.append(_t)
+
+    def pump_cover_ready():
+        """Call once per frame: promote finished CPU surfaces -> GPU textures."""
+        with cover_ready_lock:
+            if not cover_ready:
+                return
+            batch = list(cover_ready.items())
+            cover_ready.clear()
+        for fp, result in batch:
+            if len(result) == 3 and result[0] is not None:
+                surf, dw, dh = result
+                tex = sdl2.SDL_CreateTextureFromSurface(renderer.sdlrenderer, surf)
+                sdl2.SDL_FreeSurface(surf)
+                cover_cache[fp] = (tex, dw, dh) if tex else (None, 0, 0)
+            else:
+                cover_cache[fp] = (None, 0, 0)
+
     def get_cover_texture(filepath):
+        """Non-blocking: returns cached texture or queues background load."""
         if filepath in cover_cache:
             return cover_cache[filepath]
-        try:
-            ext = os.path.splitext(filepath)[1].lower()
-            img_data = None
-            if ext == '.epub':
-                img_data = extract_epub_cover_data(filepath)
-            if img_data:
-                rw = sdl2.SDL_RWFromConstMem(img_data, len(img_data))
-                surf = sdlimage.IMG_Load_RW(rw, 1)
-                if surf:
-                    w = surf.contents.w
-                    h = surf.contents.h
-                    tex = sdl2.SDL_CreateTextureFromSurface(renderer.sdlrenderer, surf)
-                    sdl2.SDL_FreeSurface(surf)
-                    if tex:
-                        cover_cache[filepath] = (tex, w, h)
-                        return (tex, w, h)
-        except Exception:
-            pass
-        cover_cache[filepath] = (None, 0, 0)
+        with cover_ready_lock:
+            already = filepath in cover_ready
+        if not already:
+            with _cover_q_lock:
+                if filepath not in cover_pending:
+                    cover_pending.add(filepath)
+                    _cover_q.put_nowait(filepath)
         return (None, 0, 0)
 
+    def prewarm_covers(item_list, path):
+        """Pre-queue all file items immediately when entering a directory."""
+        for item in item_list:
+            if not item["is_dir"]:
+                fp = os.path.join(path, item["name"])
+                if fp not in cover_cache:
+                    with cover_ready_lock:
+                        already = fp in cover_ready
+                    if not already:
+                        with _cover_q_lock:
+                            if fp not in cover_pending:
+                                cover_pending.add(fp)
+                                _cover_q.put_nowait(fp)
+
     def clear_cover_cache():
+        with _cover_q_lock:
+            cover_pending.clear()
+        while not _cover_q.empty():
+            try: _cover_q.get_nowait(); _cover_q.task_done()
+            except Exception: break
+        with cover_ready_lock:
+            for result in cover_ready.values():
+                if len(result) == 3 and result[0] is not None:
+                    sdl2.SDL_FreeSurface(result[0])
+            cover_ready.clear()
         for tex, _, _ in cover_cache.values():
             if tex:
                 sdl2.SDL_DestroyTexture(tex)
         cover_cache.clear()
 
     
-    # Reader Data
+    # NOTE: cover_queue_lock replaced by _cover_q_lock -- no references remain
+
+    def _make_list_items_for_path(fldrs, fls, cur_path, base_path):
+        li = ([{"name": "..", "is_dir": True}] if cur_path != base_path else [])
+        li += [{"name": f, "is_dir": True} for f in fldrs]
+        li += [{"name": f, "is_dir": False} for f in fls]
+        return li
+
     raw_chapters = [] # List of (title, text_string)
     reader_lines = []
     chapter_offsets = [] # List of (title, line_index)
@@ -1006,17 +1152,16 @@ def main():
                         if not l2_pressed and not r2_pressed:
                             l2_pressed = True
                             if state == STATE_READER:
-                                if book_images:
-                                    state = STATE_IMAGE_VIEW
-                                    image_zoom = -1.0
-                                    image_pan_x = 0
-                                    image_pan_y = 0
-                                    needs_redraw = True
-                                else:
-                                    toast_msg = "Sach khong co anh minh hoa"
-                                    toast_timer = current_ticks
-                                    needs_redraw = True
-                            elif state == STATE_IMAGE_VIEW:
+                                state = STATE_TOC
+                                toc_tab = 0
+                                toc_sel_index = 0
+                                for idx, (ch_title, ch_line) in enumerate(chapter_offsets):
+                                    if ch_line <= reader_scroll_y:
+                                        toc_sel_index = idx
+                                    else:
+                                        break
+                                needs_redraw = True
+                            elif state in (STATE_TOC, STATE_IMAGE_VIEW):
                                 state = STATE_READER
                                 needs_redraw = True
                     elif val < 8000:
@@ -1063,23 +1208,11 @@ def main():
                     elif btn == sdl2.SDL_CONTROLLER_BUTTON_DPAD_RIGHT:
                         dpad_right_held = True
                         dpad_horiz_timer = 0
-                    elif btn == sdl2.SDL_CONTROLLER_BUTTON_LEFTSHOULDER: # Page Up
-                        page_jump = 8
-                        sel_index = max(0, sel_index - page_jump)
-                        if library_view_mode == "grid":
-                            scroll_y = (sel_index // 8) * 8
-                        else:
-                            scroll_y = max(0, scroll_y - page_jump)
+                    elif btn == sdl2.SDL_CONTROLLER_BUTTON_LEFTSHOULDER: # L: Prev Theme
+                        theme_idx = (theme_idx - 1) % len(THEMES)
+                        write_theme_idx(theme_idx)
                         needs_redraw = True
-                    elif btn == sdl2.SDL_CONTROLLER_BUTTON_RIGHTSHOULDER: # Page Down
-                        page_jump = 8
-                        sel_index = min(len(list_items) - 1, sel_index + page_jump)
-                        if library_view_mode == "grid":
-                            scroll_y = (sel_index // 8) * 8
-                        else:
-                            scroll_y = min(max(0, len(list_items) - page_jump), scroll_y + page_jump)
-                        needs_redraw = True
-                    elif btn == sdl2.SDL_CONTROLLER_BUTTON_X: # Physical Y - Theme Toggle
+                    elif btn == sdl2.SDL_CONTROLLER_BUTTON_RIGHTSHOULDER: # R: Next Theme
                         theme_idx = (theme_idx + 1) % len(THEMES)
                         write_theme_idx(theme_idx)
                         needs_redraw = True
@@ -1092,6 +1225,7 @@ def main():
                                 folders, files = get_directory_contents(current_path)
                                 sel_index = 0
                                 scroll_y = 0
+                                prewarm_covers(_make_list_items_for_path(folders, files, current_path, base_path), current_path)
                                 needs_redraw = True
                             elif item["is_dir"]:
                                 clear_cover_cache()
@@ -1099,6 +1233,7 @@ def main():
                                 folders, files = get_directory_contents(current_path)
                                 sel_index = 0
                                 scroll_y = 0
+                                prewarm_covers(_make_list_items_for_path(folders, files, current_path, base_path), current_path)
                                 needs_redraw = True
                             else:
                                 filepath = os.path.join(current_path, item["name"])
@@ -1116,7 +1251,15 @@ def main():
                             elif sel_index < scroll_y:
                                 scroll_y = sel_index
                         needs_redraw = True
-                        
+                    elif btn == sdl2.SDL_CONTROLLER_BUTTON_BACK: # SELECT - Author Info
+                        state = STATE_ABOUT
+                        needs_redraw = True
+
+                elif state == STATE_ABOUT:
+                    if btn in (sdl2.SDL_CONTROLLER_BUTTON_A, sdl2.SDL_CONTROLLER_BUTTON_B, sdl2.SDL_CONTROLLER_BUTTON_BACK):
+                        state = STATE_BROWSE
+                        needs_redraw = True
+
                 elif state == STATE_READER:
                     if btn == sdl2.SDL_CONTROLLER_BUTTON_DPAD_UP:
                         handle_reader_direction(0, -1)
@@ -1145,7 +1288,11 @@ def main():
                         recalculate_layout()
                         if reader_lines:
                             reader_scroll_y = max(0, min(reader_scroll_y, len(reader_lines) - lines_per_page))
-                    elif btn == sdl2.SDL_CONTROLLER_BUTTON_BACK: # SELECT - TOC
+                    elif btn == sdl2.SDL_CONTROLLER_BUTTON_BACK: # SELECT - Return to Library
+                        write_save(current_filepath, reader_scroll_y, current_font_size)
+                        state = STATE_BROWSE
+                        needs_redraw = True
+                    elif btn == sdl2.SDL_CONTROLLER_BUTTON_A: # Physical B - Open TOC
                         state = STATE_TOC
                         toc_tab = 0
                         toc_sel_index = 0
@@ -1154,11 +1301,10 @@ def main():
                                 toc_sel_index = idx
                             else:
                                 break
-                    elif btn == sdl2.SDL_CONTROLLER_BUTTON_A: # Physical B - Exit Reader
-                        write_save(current_filepath, reader_scroll_y, current_font_size)
-                        state = STATE_BROWSE
+                        needs_redraw = True
                     elif btn == sdl2.SDL_CONTROLLER_BUTTON_B: # Physical A - Toggle HUD
                         show_hud = not show_hud
+                        needs_redraw = True
                         
                 elif state == STATE_TOC:
                     if btn in (sdl2.SDL_CONTROLLER_BUTTON_LEFTSHOULDER, sdl2.SDL_CONTROLLER_BUTTON_RIGHTSHOULDER, sdl2.SDL_CONTROLLER_BUTTON_DPAD_LEFT, sdl2.SDL_CONTROLLER_BUTTON_DPAD_RIGHT):
@@ -1380,11 +1526,15 @@ def main():
             dpad_timer = 0
             dpad_horiz_timer = 0
 
+        pump_cover_ready()  # promote background-loaded covers to GPU textures
         if needs_redraw:
             theme = THEMES[theme_idx]
             renderer.clear(theme["bg"])
             
-            render_state = state_before_quit if state == STATE_QUIT_CONFIRM else state
+            if state in (STATE_QUIT_CONFIRM, STATE_ABOUT):
+                render_state = state_before_quit if state == STATE_QUIT_CONFIRM else STATE_BROWSE
+            else:
+                render_state = state
 
             if render_state == STATE_BROWSE:
                 library_theme = LIBRARY_THEMES[theme_idx]
@@ -1600,7 +1750,7 @@ def main():
                                 sdl2.SDL_DestroyTexture(tex)
 
                 renderer.fill((0, SCREEN_H - 58, SCREEN_W, 1), library_theme["divider"])
-                footer = f"A: Open    B: {'List View' if library_view_mode == 'grid' else 'Grid View'}    Y: Theme    [START] Exit"
+                footer = f"A: Open   B: {'List' if library_view_mode == 'grid' else 'Grid'}   L/R: Theme   SELECT: Info   [START] Exit"
                 tex, tw, th = render_text(footer, font_small, library_theme["secondary"])
                 if tex:
                     sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(32, SCREEN_H - 38, tw, th))
@@ -1694,9 +1844,7 @@ def main():
                         sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(20, 15, min(tw, reader_w-40), th))
                         sdl2.SDL_DestroyTexture(tex)
                     
-                    # Bottom HUD: Instructions
-                    img_hint = f" | L2/R2: Anh ({len(book_images)})" if book_images else ""
-                    footer = f"Size: {current_font_size} | L/R: Aa{img_hint} | X: Rotate | Y: Theme | SELECT: Menu | B: Back"
+                    footer = f"Size: {current_font_size} | L/R: Aa | X: Rotate | Y: Theme | B/L2/R2: Contents | SELECT: LIB"
                     tex, tw, th = render_text(footer, font_small, theme["text"])
                     if tex:
                         sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(20, reader_h - 45, min(tw, reader_w-40), th))
@@ -1712,11 +1860,11 @@ def main():
             elif render_state == STATE_TOC:
                 renderer.fill((0, 0, SCREEN_W, 60), theme["header"])
                 if len(book_images) > 0:
-                    tab0 = f"[ MUC LUC ({len(chapter_offsets)}) ]" if toc_tab == 0 else f"MUC LUC ({len(chapter_offsets)})"
-                    tab1 = f"[ ANH MINH HOA ({len(book_images)}) ]" if toc_tab == 1 else f"ANH MINH HOA ({len(book_images)})"
+                    tab0 = f"[ CHAPTERS ({len(chapter_offsets)}) ]" if toc_tab == 0 else f"CHAPTERS ({len(chapter_offsets)})"
+                    tab1 = f"[ IMAGES ({len(book_images)}) ]" if toc_tab == 1 else f"IMAGES ({len(book_images)})"
                     toc_title = f"{tab0}    |    {tab1}  (L1/R1)"
                 else:
-                    toc_title = "TABLE OF CONTENTS"
+                    toc_title = "CONTENTS"
                 tex, tw, th = render_text(toc_title, font_medium, theme["text"])
                 if tex:
                     sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(SCREEN_W//2 - tw//2, 10, min(tw, SCREEN_W-40), th))
@@ -1739,7 +1887,7 @@ def main():
                             sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(40, iy + 5, min(tw, SCREEN_W-80), th))
                             sdl2.SDL_DestroyTexture(tex)
                             
-                    footer = "A: Chon chuong | B: Tro ve | L1/R1: Chuyen tab" if len(book_images) > 0 else "A: Jump | B: Cancel"
+                    footer = "A: Select Chapter | B: Back | L1/R1: Switch Tab" if len(book_images) > 0 else "A: Jump | B: Cancel"
                 else:
                     start_idx = max(0, toc_img_sel_index - visible_items // 2)
                     end_idx = min(len(book_images), start_idx + visible_items)
@@ -1752,13 +1900,13 @@ def main():
                         if i == toc_img_sel_index:
                             renderer.fill((0, iy, SCREEN_W, 40), theme["sel"])
                             
-                        item_str = f"Anh {i+1}: {img_name}"
+                        item_str = f"Image {i+1}: {img_name}"
                         tex, tw, th = render_text(item_str, font_small, theme["text"])
                         if tex:
                             sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(40, iy + 5, min(tw, SCREEN_W-80), th))
                             sdl2.SDL_DestroyTexture(tex)
                             
-                    footer = "A: Xem anh | B: Tro ve | L1/R1: Chuyen tab"
+                    footer = "A: View Image | B: Back | L1/R1: Switch Tab"
 
                 tex, tw, th = render_text(footer, font_small, theme["text"])
                 if tex:
@@ -1788,7 +1936,7 @@ def main():
                     else:
                         sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, dst_rect)
                 else:
-                    msg = "Khong the tai anh nay"
+                    msg = "Cannot load this image"
                     tex_err, ew, eh = render_text(msg, font_medium, theme["text"])
                     if tex_err:
                         sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_err, None, sdl2.SDL_Rect((SCREEN_W-ew)//2, (SCREEN_H-eh)//2, ew, eh))
@@ -1801,7 +1949,7 @@ def main():
                     
                     cur_img_name = os.path.basename(book_images[current_image_idx])
                     book_title, _ = get_book_display_metadata(os.path.basename(current_filepath))
-                    hud_top = f"{book_title} - Anh {current_image_idx + 1}/{len(book_images)} - {cur_img_name}"
+                    hud_top = f"{book_title} - Image {current_image_idx + 1}/{len(book_images)} - {cur_img_name}"
                     tex_top, tw, th = render_text(hud_top, font_small, theme["text"])
                     if tex_top:
                         sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_top, None, sdl2.SDL_Rect(20, 15, min(tw, SCREEN_W - 40), th))
@@ -1811,13 +1959,64 @@ def main():
                     renderer.fill((0, SCREEN_H - 55, SCREEN_W, 55), theme["header"])
                     renderer.fill((0, SCREEN_H - 55, SCREEN_W, 2), theme["sel"])
                     zoom_str = "Fit" if image_zoom <= 0 else f"{int(image_zoom*100)}%"
-                    hud_bot = f"L/R: Chuyen anh | Y: Zoom ({zoom_str}) | X: Xoay | B: Tro ve doc sach"
+                    hud_bot = f"L/R: Switch Image | Y: Zoom ({zoom_str}) | X: Rotate | B: Back to Reading"
                     tex_bot, bw, bh = render_text(hud_bot, font_small, theme["text"])
                     if tex_bot:
                         sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_bot, None, sdl2.SDL_Rect(20, SCREEN_H - 38, min(bw, SCREEN_W - 40), bh))
                         sdl2.SDL_DestroyTexture(tex_bot)
 
-            if state == STATE_QUIT_CONFIRM:
+            if state == STATE_ABOUT:
+                lib_t = LIBRARY_THEMES[theme_idx]
+                sdl2.SDL_SetRenderDrawBlendMode(renderer.sdlrenderer, sdl2.SDL_BLENDMODE_BLEND)
+                sdl2.SDL_SetRenderDrawColor(renderer.sdlrenderer, 0, 0, 0, 160)
+                sdl2.SDL_RenderFillRect(renderer.sdlrenderer, sdl2.SDL_Rect(0, 0, SCREEN_W, SCREEN_H))
+                
+                pop_w, pop_h = 640, 400
+                pop_x, pop_y = (SCREEN_W - pop_w) // 2, (SCREEN_H - pop_h) // 2
+                renderer.fill((pop_x, pop_y, pop_w, pop_h), lib_t["sel_border"])
+                renderer.fill((pop_x + 2, pop_y + 2, pop_w - 4, pop_h - 4), lib_t["bg"])
+                
+                # Title
+                tex, tw, th = render_text("APPLICATION INFO", font_medium, lib_t["accent"])
+                if tex:
+                    sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(pop_x + (pop_w - tw)//2, pop_y + 24, tw, th))
+                    sdl2.SDL_DestroyTexture(tex)
+                    
+                # App Name
+                tex, tw, th = render_text("RetroBooks v1.0", font_large, lib_t["text"])
+                if tex:
+                    sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(pop_x + (pop_w - tw)//2, pop_y + 68, tw, th))
+                    sdl2.SDL_DestroyTexture(tex)
+                    
+                # Subtitle
+                tex, tw, th = render_text("Ebook & Novel Reader for TrimUI Brick Pro", font_small, lib_t["secondary"])
+                if tex:
+                    sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(pop_x + (pop_w - tw)//2, pop_y + 128, tw, th))
+                    sdl2.SDL_DestroyTexture(tex)
+                    
+                renderer.fill((pop_x + 40, pop_y + 166, pop_w - 80, 1), lib_t["divider"])
+                
+                # Info lines
+                lines = [
+                    "Author: Nguyen Ngoc Cuong",
+                    "Email: nn.cuong.404@gmail.com",
+                    "Facebook: aegony98 / Instagram: ich_heisse_cuong"
+                ]
+                iy = pop_y + 200
+                for line in lines:
+                    tex, tw, th = render_text(line, font_small, lib_t["text"])
+                    if tex:
+                        sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(pop_x + 35, iy, min(tw, pop_w - 70), th))
+                        sdl2.SDL_DestroyTexture(tex)
+                    iy += 40
+                    
+                renderer.fill((pop_x + 40, pop_y + pop_h - 55, pop_w - 80, 1), lib_t["divider"])
+                tex, tw, th = render_text("B / SELECT: Close", font_small, lib_t["secondary"])
+                if tex:
+                    sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(pop_x + (pop_w - tw)//2, pop_y + pop_h - 40, tw, th))
+                    sdl2.SDL_DestroyTexture(tex)
+
+            elif state == STATE_QUIT_CONFIRM:
                 sdl2.SDL_SetRenderDrawBlendMode(renderer.sdlrenderer, sdl2.SDL_BLENDMODE_BLEND)
                 sdl2.SDL_SetRenderDrawColor(renderer.sdlrenderer, 0, 0, 0, 150)
                 sdl2.SDL_RenderFillRect(renderer.sdlrenderer, sdl2.SDL_Rect(0, 0, SCREEN_W, SCREEN_H))
@@ -1828,7 +2027,7 @@ def main():
                 renderer.fill((pop_x, pop_y, pop_w, pop_h), theme["sel"])
                 renderer.fill((pop_x+2, pop_y+2, pop_w-4, pop_h-4), theme["bg"])
                 
-                msg = "Exit RetroRead?"
+                msg = "Exit RetroBooks?"
                 sdlttf.TTF_SetFontStyle(font_large, sdlttf.TTF_STYLE_BOLD)
                 tex, tw, th = render_text(msg, font_large, theme["text"])
                 sdlttf.TTF_SetFontStyle(font_large, sdlttf.TTF_STYLE_NORMAL)
@@ -1865,6 +2064,8 @@ def main():
             
         sdl2.SDL_Delay(16)
 
+    cover_thread_running[0] = False
+    for _t in _cover_threads: _t.join(timeout=0.3)
     clear_cover_cache()
     if font_medium:
         sdlttf.TTF_CloseFont(font_medium)

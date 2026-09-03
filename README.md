@@ -1,4 +1,4 @@
-# RetroRead App
+# RetroBooks App
 
 Một ứng dụng đọc sách điện tử (Ebook & Novel Reader) mã nguồn mở cao cấp, được thiết kế và tối ưu hóa đặc biệt cho thiết bị **TrimUI Brick Pro** (màn hình IPS 1024×768, vi xử lý Allwinner A133p, TrimUI OS).
 
@@ -16,14 +16,15 @@ Một ứng dụng đọc sách điện tử (Ebook & Novel Reader) mã nguồn 
   - Tự động bóc tách ảnh bìa thực tế từ tệp EPUB (thẻ OPF manifest cover-image) hiển thị sắc nét trong Grid View.
   - Thẻ bìa Hardcover dập chìm hoa văn thanh lịch cho các sách không có bìa hoặc tệp văn bản thuần.
   - Tự động ghi nhớ chế độ xem yêu thích vào bộ nhớ cấu hình.
-- **6 Bộ chủ đề đọc sách chuyên sâu:**
+- **7 Bộ chủ đề đọc sách chuyên sâu:**
   1. **Vintage Dark** *(Mặc định)* — Nâu cổ điển ấm áp.
   2. **Night Mode** — Xám than hiện đại, tương phản cao.
   3. **Paper** — Giấy ngà tự nhiên, êm dịu cho mắt.
   4. **Warm Night** — Ánh sáng hổ phách ấm giúp bảo vệ mắt khi đọc sách ban đêm.
   5. **AMOLED Black** — Nền đen sâu tối giản, tiết kiệm pin.
   6. **Forest** — Xanh rêu thư viện tĩnh lặng.
-  - Đổi theme tức thì bằng **Nút Y** trong Thư viện hoặc ngay khi đang Đọc sách.
+  7. **Coastal Earth** — Muted Coastal & Dusty Earth editorial dịu mắt.
+  - Đổi theme tức thì bằng **Nút vai L1 / R1** trong Thư viện hoặc **Nút Y** khi đang Đọc sách.
 - **Điều chỉnh cỡ chữ tức thì (On-the-fly Font Sizing):** Tăng/giảm kích thước chữ nhanh chóng từ 20px đến 60px bằng phím vai **L1 / R1** mà không cần mở menu cài đặt.
 - **Xoay màn hình 4 hướng (0°, 90°, 180°, 270°):** Nhấn **Nút X** để đổi chiều đọc dọc hoặc ngang tùy sở thích.
 - **Mục lục 2 Tab thông minh (TOC):** Nhấn **SELECT** để mở bảng mục lục phân nhánh: Tab 1 duyệt Danh sách Chương, Tab 2 duyệt Toàn bộ Ảnh minh họa trong sách.
@@ -41,8 +42,9 @@ Một ứng dụng đọc sách điện tử (Ebook & Novel Reader) mã nguồn 
 | **D-pad / Analog Trái / Phải** | Nhảy trang (trong List) hoặc di chuyển cột trái/phải (trong Grid) |
 | **Nút A** | Mở đọc cuốn sách đang chọn / Vào thư mục |
 | **Nút B** | **Chuyển đổi giao diện Thư viện: [LIST VIEW] $\leftrightarrow$ [GRID VIEW]** |
-| **Nút Y** | Chuyển đổi qua lại giữa **6 Chủ đề giao diện (Theme)** |
-| **Nút vai L1 / R1** | Nhảy nhanh 8 cuốn sách (Page Up / Page Down) |
+| **Nút vai L1 / R1** | Chuyển đổi qua lại giữa **các Chủ đề giao diện (Theme)** |
+| **L2 / R2** | Nhảy về đầu / cuối danh sách |
+| **SELECT** | Mở hộp thoại thông tin tác giả & ứng dụng (About Info) |
 | **Nút START** | Mở hộp thoại xác nhận thoát ứng dụng (A: Thoát, B: Hủy) |
 
 ---
@@ -57,7 +59,7 @@ Một ứng dụng đọc sách điện tử (Ebook & Novel Reader) mã nguồn 
 | **Nút A** | Bật / Tắt thanh trạng thái đọc sách (HUD) |
 | **Nút B** | Thoát sách, lưu tiến trình và trở về Thư viện sách |
 | **Nút X** | Xoay hướng màn hình đọc (0° $\rightarrow$ 90° $\rightarrow$ 180° $\rightarrow$ 270°) |
-| **Nút Y** | Đổi chủ đề màu sắc đọc sách (6 Themes) |
+| **Nút Y** | Đổi chủ đề màu sắc đọc sách (7 Themes) |
 | **Nút SELECT** | Mở Mục lục phân nhánh (Tab Chương sách & Tab Ảnh minh họa) |
 | **Nút START** | Mở hộp thoại xác nhận thoát ứng dụng |
 
@@ -82,8 +84,8 @@ Một ứng dụng đọc sách điện tử (Ebook & Novel Reader) mã nguồn 
 Để cài đặt ứng dụng lên máy TrimUI của bạn, chỉ cần làm theo các bước đơn giản sau:
 
 1. Bấm vào nút `<> Code` màu xanh lá ở trên Github, sau đó chọn **Download ZIP** để tải mã nguồn về máy tính.
-2. Giải nén file ZIP vừa tải ra, đảm bảo thư mục giải nén được đặt tên là `RetroRead`.
-3. **Copy toàn bộ thư mục `RetroRead` đó và dán vào thư mục `Apps` nằm trên thẻ nhớ (SD Card) của máy.**
+2. Giải nén file ZIP vừa tải ra, đảm bảo thư mục giải nén được đặt tên là `RetroBooks`.
+3. **Copy toàn bộ thư mục `RetroBooks` đó và dán vào thư mục `Apps` nằm trên thẻ nhớ (SD Card) của máy.**
 4. Chép các cuốn sách điện tử của bạn (`.epub`, `.mobi`, `.azw`, `.azw3`, `.fb2`, `.txt`) vào thư mục `Books` nằm ở thư mục gốc của thẻ nhớ SD (`/mnt/SDCARD/Books`).
 5. Lắp thẻ nhớ vào máy TrimUI, ứng dụng sẽ tự động xuất hiện trong giao diện menu Apps.
 
