@@ -822,7 +822,51 @@ def main():
         return None
 
     inline_image_cache = {}
+    book_img_thumb_cache = {}
     page_items_drawn = 15
+
+    def clear_book_img_thumb_cache():
+        nonlocal book_img_thumb_cache
+        for k in list(book_img_thumb_cache.keys()):
+            try:
+                sdl2.SDL_DestroyTexture(book_img_thumb_cache[k]["tex"])
+            except Exception:
+                pass
+        book_img_thumb_cache.clear()
+
+    def get_book_img_thumbnail(img_path, max_w=216, max_h=260):
+        nonlocal book_img_thumb_cache
+        if not img_path or not image_loader:
+            return None
+        if img_path in book_img_thumb_cache:
+            return book_img_thumb_cache[img_path]
+        try:
+            data = image_loader(img_path)
+            if not data:
+                return None
+            rw = sdl2.SDL_RWFromConstMem(data, len(data))
+            orig_surf = sdlimage.IMG_Load_RW(rw, 1)
+            if orig_surf:
+                ow = orig_surf.contents.w
+                oh = orig_surf.contents.h
+                scale = min(float(max_w) / max(1, ow), float(max_h) / max(1, oh))
+                tw = max(1, int(ow * scale))
+                th = max(1, int(oh * scale))
+                small_surf = sdl2.SDL_CreateRGBSurfaceWithFormat(0, tw, th, 32, sdl2.SDL_PIXELFORMAT_RGBA8888)
+                if small_surf:
+                    sdl2.SDL_BlitScaled(orig_surf, None, small_surf, None)
+                    tex = sdl2.SDL_CreateTextureFromSurface(renderer.sdlrenderer, small_surf)
+                    sdl2.SDL_FreeSurface(small_surf)
+                else:
+                    tex = sdl2.SDL_CreateTextureFromSurface(renderer.sdlrenderer, orig_surf)
+                sdl2.SDL_FreeSurface(orig_surf)
+                if tex:
+                    info = {"tex": tex, "w": tw, "h": th}
+                    book_img_thumb_cache[img_path] = info
+                    return info
+        except Exception as e:
+            log_debug(f"get_book_img_thumbnail error: {e}")
+        return None
 
     def find_image_key(src):
         if not book_images:
@@ -1040,6 +1084,7 @@ def main():
         toc_tab = 0
         toc_img_sel_index = 0
         clear_inline_image_cache()
+        clear_book_img_thumb_cache()
         if loaded_image_tex:
             sdl2.SDL_DestroyTexture(loaded_image_tex)
             loaded_image_tex = None
@@ -1091,14 +1136,16 @@ def main():
             ry = sdl2.SDL_GameControllerGetAxis(c, sdl2.SDL_CONTROLLER_AXIS_RIGHTY)
             ax = lx if abs(lx) >= abs(rx) else rx
             ay = ly if abs(ly) >= abs(ry) else ry
-            if ay < -15000:
-                axis_up = True
-            elif ay > 15000:
-                axis_down = True
-            if ax < -15000:
-                axis_left = True
-            elif ax > 15000:
-                axis_right = True
+            if abs(ay) >= 15000 and abs(ay) >= abs(ax):
+                if ay < 0:
+                    axis_up = True
+                else:
+                    axis_down = True
+            elif abs(ax) >= 15000 and abs(ax) > abs(ay):
+                if ax < 0:
+                    axis_left = True
+                else:
+                    axis_right = True
             if state == STATE_READER and (current_ticks - last_axis_scroll > 100):
                 if abs(ax) >= 15000 or abs(ay) >= 15000:
                     if abs(ax) > abs(ay):
@@ -1307,7 +1354,7 @@ def main():
                         needs_redraw = True
                         
                 elif state == STATE_TOC:
-                    if btn in (sdl2.SDL_CONTROLLER_BUTTON_LEFTSHOULDER, sdl2.SDL_CONTROLLER_BUTTON_RIGHTSHOULDER, sdl2.SDL_CONTROLLER_BUTTON_DPAD_LEFT, sdl2.SDL_CONTROLLER_BUTTON_DPAD_RIGHT):
+                    if btn in (sdl2.SDL_CONTROLLER_BUTTON_LEFTSHOULDER, sdl2.SDL_CONTROLLER_BUTTON_RIGHTSHOULDER):
                         if len(book_images) > 0:
                             toc_tab = 1 - toc_tab
                             needs_redraw = True
@@ -1317,6 +1364,12 @@ def main():
                     elif btn == sdl2.SDL_CONTROLLER_BUTTON_DPAD_DOWN:
                         dpad_down_held = True
                         dpad_timer = 0
+                    elif btn == sdl2.SDL_CONTROLLER_BUTTON_DPAD_LEFT:
+                        dpad_left_held = True
+                        dpad_horiz_timer = 0
+                    elif btn == sdl2.SDL_CONTROLLER_BUTTON_DPAD_RIGHT:
+                        dpad_right_held = True
+                        dpad_horiz_timer = 0
                     elif btn == sdl2.SDL_CONTROLLER_BUTTON_B: # Physical A - Select
                         if toc_tab == 0:
                             if len(chapter_offsets) > 0:
@@ -1329,8 +1382,10 @@ def main():
                                 image_zoom = -1.0
                                 image_pan_x = 0
                                 image_pan_y = 0
-                    elif btn == sdl2.SDL_CONTROLLER_BUTTON_A or btn == sdl2.SDL_CONTROLLER_BUTTON_BACK: # Physical B or Select - Back to Reader
+                        needs_redraw = True
+                    elif btn in (sdl2.SDL_CONTROLLER_BUTTON_A, sdl2.SDL_CONTROLLER_BUTTON_BACK): # Physical B or Select - Back to Reader
                         state = STATE_READER
+                        needs_redraw = True
 
                 elif state == STATE_IMAGE_VIEW:
                     if btn == sdl2.SDL_CONTROLLER_BUTTON_DPAD_LEFT or btn == sdl2.SDL_CONTROLLER_BUTTON_LEFTSHOULDER:
@@ -1478,6 +1533,7 @@ def main():
 
         elif state == STATE_TOC:
             if toc_tab == 0:
+                # Tab 0: Chapters List
                 if is_up:
                     if dpad_timer == 0 or (dpad_timer > 15 and dpad_timer % 3 == 0):
                         if len(chapter_offsets) > 0:
@@ -1492,31 +1548,60 @@ def main():
                     dpad_timer += 1
                 else:
                     dpad_timer = 0
+
+                if is_left:
+                    if dpad_horiz_timer == 0 or (dpad_horiz_timer > 15 and dpad_horiz_timer % 4 == 0):
+                        if len(chapter_offsets) > 0:
+                            toc_sel_index = max(0, toc_sel_index - visible_items)
+                        needs_redraw = True
+                    dpad_horiz_timer += 1
+                elif is_right:
+                    if dpad_horiz_timer == 0 or (dpad_horiz_timer > 15 and dpad_horiz_timer % 4 == 0):
+                        if len(chapter_offsets) > 0:
+                            toc_sel_index = min(len(chapter_offsets) - 1, toc_sel_index + visible_items)
+                        needs_redraw = True
+                    dpad_horiz_timer += 1
+                else:
+                    dpad_horiz_timer = 0
             else:
+                # Tab 1: Images Grid 2x4 (8 images per page)
+                img_cols = 4
+                total_imgs = len(book_images)
                 if is_up:
                     if dpad_timer == 0 or (dpad_timer > 15 and dpad_timer % 3 == 0):
-                        if len(book_images) > 0:
-                            toc_img_sel_index = (toc_img_sel_index - 1) % len(book_images)
+                        if total_imgs > 0:
+                            if toc_img_sel_index >= img_cols:
+                                toc_img_sel_index -= img_cols
+                            else:
+                                toc_img_sel_index = 0
                         needs_redraw = True
                     dpad_timer += 1
                 elif is_down:
                     if dpad_timer == 0 or (dpad_timer > 15 and dpad_timer % 3 == 0):
-                        if len(book_images) > 0:
-                            toc_img_sel_index = (toc_img_sel_index + 1) % len(book_images)
+                        if total_imgs > 0:
+                            if toc_img_sel_index + img_cols < total_imgs:
+                                toc_img_sel_index += img_cols
+                            else:
+                                toc_img_sel_index = total_imgs - 1
                         needs_redraw = True
                     dpad_timer += 1
                 else:
                     dpad_timer = 0
 
-            # Horizontal switch tabs in TOC
-            if is_left or is_right:
-                if dpad_horiz_timer == 0:
-                    if len(book_images) > 0:
-                        toc_tab = 1 - toc_tab
+                if is_left:
+                    if dpad_horiz_timer == 0 or (dpad_horiz_timer > 15 and dpad_horiz_timer % 3 == 0):
+                        if total_imgs > 0:
+                            toc_img_sel_index = max(0, toc_img_sel_index - 1)
                         needs_redraw = True
-                dpad_horiz_timer += 1
-            else:
-                dpad_horiz_timer = 0
+                    dpad_horiz_timer += 1
+                elif is_right:
+                    if dpad_horiz_timer == 0 or (dpad_horiz_timer > 15 and dpad_horiz_timer % 3 == 0):
+                        if total_imgs > 0:
+                            toc_img_sel_index = min(total_imgs - 1, toc_img_sel_index + 1)
+                        needs_redraw = True
+                    dpad_horiz_timer += 1
+                else:
+                    dpad_horiz_timer = 0
 
         elif state != STATE_READER and state != STATE_IMAGE_VIEW:
             dpad_up_held = False
@@ -1887,26 +1972,72 @@ def main():
                             sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(40, iy + 5, min(tw, SCREEN_W-80), th))
                             sdl2.SDL_DestroyTexture(tex)
                             
-                    footer = "A: Select Chapter | B: Back | L1/R1: Switch Tab" if len(book_images) > 0 else "A: Jump | B: Cancel"
+                    footer = "D-Pad / Sticks: Move   |   A: Select Chapter   |   L1/R1: Switch Tab   |   B: Cancel"
                 else:
-                    start_idx = max(0, toc_img_sel_index - visible_items // 2)
-                    end_idx = min(len(book_images), start_idx + visible_items)
-                    
+                    total_imgs = len(book_images)
+                    items_per_page = 8
+                    cols = 4
+                    start_page = (toc_img_sel_index // items_per_page) * items_per_page
+                    end_page = min(total_imgs, start_page + items_per_page)
+
+                    margin_x = 44
+                    gap_x = 24
+                    thumb_w = 216
+                    thumb_h = 260
+                    gap_y = 40
                     y_start = 80
-                    for i in range(start_idx, end_idx):
-                        img_name = os.path.basename(book_images[i])
-                        iy = y_start + (i - start_idx) * 40
-                        
-                        if i == toc_img_sel_index:
-                            renderer.fill((0, iy, SCREEN_W, 40), theme["sel"])
-                            
-                        item_str = f"Image {i+1}: {img_name}"
-                        tex, tw, th = render_text(item_str, font_small, theme["text"])
-                        if tex:
-                            sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(40, iy + 5, min(tw, SCREEN_W-80), th))
-                            sdl2.SDL_DestroyTexture(tex)
-                            
-                    footer = "A: View Image | B: Back | L1/R1: Switch Tab"
+
+                    for idx in range(start_page, end_page):
+                        slot = idx - start_page
+                        row = slot // cols
+                        col = slot % cols
+                        cell_x = margin_x + col * (thumb_w + gap_x)
+                        cell_y = y_start + row * (thumb_h + gap_y)
+                        is_sel = (idx == toc_img_sel_index)
+
+                        # Card Background
+                        renderer.fill((cell_x, cell_y, thumb_w, thumb_h), theme["header"])
+
+                        # Render Thumbnail image
+                        img_path = book_images[idx]
+                        thumb_info = get_book_img_thumbnail(img_path, thumb_w - 8, thumb_h - 8)
+                        if thumb_info and thumb_info["tex"]:
+                            tw = thumb_info["w"]
+                            th = thumb_info["h"]
+                            dst_x = cell_x + (thumb_w - tw) // 2
+                            dst_y = cell_y + (thumb_h - th) // 2
+                            sdl2.SDL_RenderCopy(renderer.sdlrenderer, thumb_info["tex"], None, sdl2.SDL_Rect(dst_x, dst_y, tw, th))
+                        else:
+                            # Placeholder card
+                            tex_ph, pw, ph = render_text(f"Img {idx + 1}", font_small, theme.get("secondary", theme["text"]))
+                            if tex_ph:
+                                sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_ph, None, sdl2.SDL_Rect(cell_x + (thumb_w - pw)//2, cell_y + (thumb_h - ph)//2, pw, ph))
+                                sdl2.SDL_DestroyTexture(tex_ph)
+
+                        # Selection border
+                        if is_sel:
+                            renderer.fill((cell_x - 3, cell_y - 3, thumb_w + 6, 3), theme["sel"])
+                            renderer.fill((cell_x - 3, cell_y + thumb_h, thumb_w + 6, 3), theme["sel"])
+                            renderer.fill((cell_x - 3, cell_y, 3, thumb_h), theme["sel"])
+                            renderer.fill((cell_x + thumb_w, cell_y, 3, thumb_h), theme["sel"])
+                        else:
+                            renderer.fill((cell_x - 1, cell_y - 1, thumb_w + 2, 1), theme.get("divider", theme["header"]))
+                            renderer.fill((cell_x - 1, cell_y + thumb_h, thumb_w + 2, 1), theme.get("divider", theme["header"]))
+                            renderer.fill((cell_x - 1, cell_y, 1, thumb_h), theme.get("divider", theme["header"]))
+                            renderer.fill((cell_x + thumb_w, cell_y, 1, thumb_h), theme.get("divider", theme["header"]))
+
+                        # Label below thumbnail
+                        img_fn = os.path.basename(img_path)
+                        if len(img_fn) > 18:
+                            img_fn = img_fn[:15] + "..."
+                        lbl_text = f"{idx + 1}. {img_fn}"
+                        lbl_color = theme["sel"] if is_sel else theme["text"]
+                        tex_lbl, lw, lh = render_text(lbl_text, font_small, lbl_color)
+                        if tex_lbl:
+                            sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_lbl, None, sdl2.SDL_Rect(cell_x + (thumb_w - min(lw, thumb_w))//2, cell_y + thumb_h + 6, min(lw, thumb_w), lh))
+                            sdl2.SDL_DestroyTexture(tex_lbl)
+
+                    footer = "D-Pad / Sticks: Move   |   A: View Fullscreen   |   L1/R1: Switch Tab   |   B: Cancel"
 
                 tex, tw, th = render_text(footer, font_small, theme["text"])
                 if tex:
@@ -2067,6 +2198,7 @@ def main():
     cover_thread_running[0] = False
     for _t in _cover_threads: _t.join(timeout=0.3)
     clear_cover_cache()
+    clear_book_img_thumb_cache()
     if font_medium:
         sdlttf.TTF_CloseFont(font_medium)
     if reader_target:
