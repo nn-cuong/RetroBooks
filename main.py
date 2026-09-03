@@ -12,17 +12,23 @@ def load_save(filepath):
     try:
         with open(SAVES_FILE, 'r') as f:
             saves = json.load(f)
-        return saves.get(filepath, {"scroll_y": 0, "font_size": 34})
+        return saves.get(filepath, {"scroll_y": 0, "font_size": 34, "line_spacing": 1.32, "word_spacing": 1.0, "margin_side": 20})
     except:
-        return {"scroll_y": 0, "font_size": 34}
+        return {"scroll_y": 0, "font_size": 34, "line_spacing": 1.32, "word_spacing": 1.0, "margin_side": 20}
 
-def write_save(filepath, scroll_y, font_size):
+def write_save(filepath, scroll_y, font_size, line_spacing=1.32, word_spacing=1.0, margin_side=20):
     try:
         saves = {}
         if os.path.exists(SAVES_FILE):
             with open(SAVES_FILE, 'r') as f:
                 saves = json.load(f)
-        saves[filepath] = {"scroll_y": scroll_y, "font_size": font_size}
+        saves[filepath] = {
+            "scroll_y": scroll_y,
+            "font_size": font_size,
+            "line_spacing": line_spacing,
+            "word_spacing": word_spacing,
+            "margin_side": margin_side
+        }
         with open(SAVES_FILE, 'w') as f:
             json.dump(saves, f)
     except:
@@ -1133,11 +1139,11 @@ def main():
         
         # Calculate fitting
         reader_w, reader_h = get_reader_view_size()
-        line_height = int(current_font_size * 1.32)
+        line_height = max(16, int(current_font_size * line_spacing_mult))
         # Reserve 55px for footer + 50px top padding = 105px reserved
         lines_per_page = max(1, (reader_h - 105) // line_height)
         
-        max_line_width = reader_w - 40 # 20px left, 20px right
+        max_line_width = max(100, reader_w - (margin_side * 2))
         
         import ctypes
         w = ctypes.c_int()
@@ -1155,8 +1161,8 @@ def main():
                 word_width_cache[w_str] = w.value
             return word_width_cache[w_str]
             
-        space_width = get_word_width(" ")
-        indent_width = get_word_width("   ")
+        space_width = max(2, int(get_word_width(" ") * word_spacing_mult))
+        indent_width = space_width * 3
         
         for title, text in raw_chapters:
             chapter_offsets.append((title, len(reader_lines)))
@@ -1232,8 +1238,12 @@ def main():
                     prefix = "   " if is_first_line else ""
                     reader_lines.append(prefix + " ".join(current_line))
                     
+    def save_current_reader_state():
+        if current_filepath:
+            write_save(current_filepath, reader_scroll_y, current_font_size, line_spacing_mult, word_spacing_mult, margin_side)
+
     def load_book(filepath):
-        nonlocal raw_chapters, reader_scroll_y, current_font_size, current_filepath, book_images, image_loader, current_image_idx, loaded_image_tex, loaded_image_idx, toc_tab, toc_img_sel_index
+        nonlocal raw_chapters, reader_scroll_y, current_font_size, current_filepath, book_images, image_loader, current_image_idx, loaded_image_tex, loaded_image_idx, toc_tab, toc_img_sel_index, line_spacing_mult, word_spacing_mult, margin_side, show_typography_popup, typography_sel_idx, image_view_source
         raw_chapters = []
         book_images = []
         image_loader = None
@@ -1250,6 +1260,12 @@ def main():
         save_data = load_save(filepath)
         reader_scroll_y = save_data.get("scroll_y", 0)
         current_font_size = save_data.get("font_size", 34)
+        line_spacing_mult = float(save_data.get("line_spacing", 1.32))
+        word_spacing_mult = float(save_data.get("word_spacing", 1.0))
+        margin_side = int(save_data.get("margin_side", 20))
+        show_typography_popup = False
+        typography_sel_idx = 0
+        image_view_source = "reader"
         current_filepath = filepath
         
         try:
@@ -1275,6 +1291,13 @@ def main():
     needs_redraw = True
     last_axis_scroll = 0
     show_hud = True
+    
+    line_spacing_mult = 1.32
+    word_spacing_mult = 1.0
+    margin_side = 20
+    show_typography_popup = False
+    typography_sel_idx = 0
+    image_view_source = "reader"
     
     left_axis_held = False
     last_left_axis_time = 0
@@ -1368,14 +1391,56 @@ def main():
                         break
 
             elif state == STATE_READER and (current_ticks - last_axis_scroll > 100):
-                if abs(ax) >= 15000 or abs(ay) >= 15000:
-                    if abs(ax) > abs(ay):
-                        handle_reader_direction(1 if ax > 0 else -1, 0)
-                    else:
-                        handle_reader_direction(0, 1 if ay > 0 else -1)
-                    last_axis_scroll = current_ticks
-                    needs_redraw = True
-                    break
+                if show_typography_popup:
+                    if abs(ax) >= 15000 or abs(ay) >= 15000:
+                        if abs(ay) > abs(ax):
+                            if ay < 0: # Up
+                                typography_sel_idx = (typography_sel_idx - 1) % 5
+                            else: # Down
+                                typography_sel_idx = (typography_sel_idx + 1) % 5
+                        else:
+                            if ax < 0: # Left
+                                if typography_sel_idx == 0:
+                                    current_font_size = max(20, current_font_size - 2)
+                                elif typography_sel_idx == 1:
+                                    line_spacing_mult = max(1.05, round(line_spacing_mult - 0.05, 2))
+                                elif typography_sel_idx == 2:
+                                    word_spacing_mult = max(0.6, round(word_spacing_mult - 0.1, 2))
+                                elif typography_sel_idx == 3:
+                                    margin_side = max(10, margin_side - 5)
+                                elif typography_sel_idx == 4:
+                                    theme_idx = (theme_idx - 1) % len(THEMES)
+                                    write_theme_idx(theme_idx)
+                                recalculate_layout()
+                                if reader_lines:
+                                    reader_scroll_y = max(0, min(reader_scroll_y, len(reader_lines) - lines_per_page))
+                            else: # Right
+                                if typography_sel_idx == 0:
+                                    current_font_size = min(60, current_font_size + 2)
+                                elif typography_sel_idx == 1:
+                                    line_spacing_mult = min(1.80, round(line_spacing_mult + 0.05, 2))
+                                elif typography_sel_idx == 2:
+                                    word_spacing_mult = min(1.6, round(word_spacing_mult + 0.1, 2))
+                                elif typography_sel_idx == 3:
+                                    margin_side = min(50, margin_side + 5)
+                                elif typography_sel_idx == 4:
+                                    theme_idx = (theme_idx + 1) % len(THEMES)
+                                    write_theme_idx(theme_idx)
+                                recalculate_layout()
+                                if reader_lines:
+                                    reader_scroll_y = max(0, min(reader_scroll_y, len(reader_lines) - lines_per_page))
+                        last_axis_scroll = current_ticks
+                        needs_redraw = True
+                        break
+                else:
+                    if abs(ax) >= 15000 or abs(ay) >= 15000:
+                        if abs(ax) > abs(ay):
+                            handle_reader_direction(1 if ax > 0 else -1, 0)
+                        else:
+                            handle_reader_direction(0, 1 if ay > 0 else -1)
+                        last_axis_scroll = current_ticks
+                        needs_redraw = True
+                        break
             elif state == STATE_IMAGE_VIEW:
                 if image_zoom > 0 and (current_ticks - last_axis_scroll > 40):
                     if abs(ax) >= 12000 or abs(ay) >= 12000:
@@ -1406,20 +1471,24 @@ def main():
         for event in events:
             if event.type == sdl2.SDL_QUIT:
                 if state in (STATE_READER, STATE_TOC, STATE_IMAGE_VIEW):
-                    write_save(current_filepath, reader_scroll_y, current_font_size)
+                    save_current_reader_state()
                 running = False
             elif event.type == sdl2.SDL_KEYDOWN:
                 if event.key.keysym.sym == sdl2.SDLK_ESCAPE:
                     if state in (STATE_READER, STATE_TOC, STATE_IMAGE_VIEW):
-                        write_save(current_filepath, reader_scroll_y, current_font_size)
+                        save_current_reader_state()
                     running = False
             elif event.type == sdl2.SDL_CONTROLLERAXISMOTION:
-                if event.caxis.axis in (sdl2.SDL_CONTROLLER_AXIS_TRIGGERLEFT, sdl2.SDL_CONTROLLER_AXIS_TRIGGERRIGHT):
-                    val = event.caxis.value
+                axis = event.caxis.axis
+                val = event.caxis.value
+                if axis == sdl2.SDL_CONTROLLER_AXIS_TRIGGERLEFT:
                     if val > 16000:
-                        if not l2_pressed and not r2_pressed:
+                        if not l2_pressed:
                             l2_pressed = True
                             if state == STATE_READER:
+                                if show_typography_popup:
+                                    show_typography_popup = False
+                                    save_current_reader_state()
                                 state = STATE_TOC
                                 toc_tab = 0
                                 toc_sel_index = 0
@@ -1430,10 +1499,27 @@ def main():
                                         break
                                 needs_redraw = True
                             elif state in (STATE_TOC, STATE_IMAGE_VIEW):
-                                state = STATE_READER
+                                if state == STATE_IMAGE_VIEW and image_view_source == "toc":
+                                    state = STATE_TOC
+                                    toc_tab = 1
+                                    toc_img_sel_index = current_image_idx
+                                else:
+                                    state = STATE_READER
                                 needs_redraw = True
                     elif val < 8000:
                         l2_pressed = False
+                elif axis == sdl2.SDL_CONTROLLER_AXIS_TRIGGERRIGHT:
+                    if val > 16000:
+                        if not r2_pressed:
+                            r2_pressed = True
+                            if state == STATE_READER:
+                                show_typography_popup = not show_typography_popup
+                                if show_typography_popup:
+                                    typography_sel_idx = 0
+                                else:
+                                    save_current_reader_state()
+                                needs_redraw = True
+                    elif val < 8000:
                         r2_pressed = False
                     
             elif event.type == sdl2.SDL_CONTROLLERBUTTONUP:
@@ -1451,7 +1537,7 @@ def main():
                 if state == STATE_QUIT_CONFIRM:
                     if btn == sdl2.SDL_CONTROLLER_BUTTON_B: # Physical A (Confirm)
                         if state_before_quit in (STATE_READER, STATE_TOC, STATE_IMAGE_VIEW):
-                            write_save(current_filepath, reader_scroll_y, current_font_size)
+                            save_current_reader_state()
                         running = False
                     elif btn == sdl2.SDL_CONTROLLER_BUTTON_A: # Physical B (Cancel)
                         state = state_before_quit
@@ -1519,60 +1605,104 @@ def main():
                             elif sel_index < scroll_y:
                                 scroll_y = sel_index
                         needs_redraw = True
-                    elif btn == sdl2.SDL_CONTROLLER_BUTTON_BACK: # SELECT - Author Info
+                    elif btn == sdl2.SDL_CONTROLLER_BUTTON_BACK: # SELECT - Info Dialog
                         state = STATE_ABOUT
                         needs_redraw = True
-
+                        
                 elif state == STATE_ABOUT:
                     if btn in (sdl2.SDL_CONTROLLER_BUTTON_A, sdl2.SDL_CONTROLLER_BUTTON_B, sdl2.SDL_CONTROLLER_BUTTON_BACK):
                         state = STATE_BROWSE
                         needs_redraw = True
 
                 elif state == STATE_READER:
-                    if btn == sdl2.SDL_CONTROLLER_BUTTON_DPAD_UP:
-                        handle_reader_direction(0, -1)
-                    elif btn == sdl2.SDL_CONTROLLER_BUTTON_DPAD_DOWN:
-                        handle_reader_direction(0, 1)
-                    elif btn == sdl2.SDL_CONTROLLER_BUTTON_DPAD_LEFT:
-                        handle_reader_direction(-1, 0)
-                    elif btn == sdl2.SDL_CONTROLLER_BUTTON_DPAD_RIGHT:
-                        handle_reader_direction(1, 0)
-                    elif btn == sdl2.SDL_CONTROLLER_BUTTON_LEFTSHOULDER: # Decrease Font
-                        current_font_size = max(30, current_font_size - 2)
-                        recalculate_layout()
-                        if reader_lines:
-                            reader_scroll_y = max(0, min(reader_scroll_y, len(reader_lines) - lines_per_page))
-                    elif btn == sdl2.SDL_CONTROLLER_BUTTON_RIGHTSHOULDER: # Increase Font
-                        current_font_size = min(44, current_font_size + 2)
-                        recalculate_layout()
-                        if reader_lines:
-                            reader_scroll_y = max(0, min(reader_scroll_y, len(reader_lines) - lines_per_page))
-                    elif btn == sdl2.SDL_CONTROLLER_BUTTON_X: # Physical Y - Theme Toggle
-                        theme_idx = (theme_idx + 1) % len(THEMES)
-                        write_theme_idx(theme_idx)
-                    elif btn == sdl2.SDL_CONTROLLER_BUTTON_Y: # Physical X - Rotate reader
-                        reader_rotation_idx = (reader_rotation_idx + 1) % 4
-                        write_reader_rotation_idx(reader_rotation_idx)
-                        recalculate_layout()
-                        if reader_lines:
-                            reader_scroll_y = max(0, min(reader_scroll_y, len(reader_lines) - lines_per_page))
-                    elif btn == sdl2.SDL_CONTROLLER_BUTTON_BACK: # SELECT - Return to Library
-                        write_save(current_filepath, reader_scroll_y, current_font_size)
-                        state = STATE_BROWSE
-                        needs_redraw = True
-                    elif btn == sdl2.SDL_CONTROLLER_BUTTON_A: # Physical B - Open TOC
-                        state = STATE_TOC
-                        toc_tab = 0
-                        toc_sel_index = 0
-                        for idx, (ch_title, ch_line) in enumerate(chapter_offsets):
-                            if ch_line <= reader_scroll_y:
-                                toc_sel_index = idx
-                            else:
-                                break
-                        needs_redraw = True
-                    elif btn == sdl2.SDL_CONTROLLER_BUTTON_B: # Physical A - Toggle HUD
-                        show_hud = not show_hud
-                        needs_redraw = True
+                    if show_typography_popup:
+                        if btn == sdl2.SDL_CONTROLLER_BUTTON_DPAD_UP:
+                            typography_sel_idx = (typography_sel_idx - 1) % 5
+                            needs_redraw = True
+                        elif btn == sdl2.SDL_CONTROLLER_BUTTON_DPAD_DOWN:
+                            typography_sel_idx = (typography_sel_idx + 1) % 5
+                            needs_redraw = True
+                        elif btn in (sdl2.SDL_CONTROLLER_BUTTON_DPAD_LEFT, sdl2.SDL_CONTROLLER_BUTTON_LEFTSHOULDER):
+                            if typography_sel_idx == 0:
+                                current_font_size = max(20, current_font_size - 2)
+                            elif typography_sel_idx == 1:
+                                line_spacing_mult = max(1.05, round(line_spacing_mult - 0.05, 2))
+                            elif typography_sel_idx == 2:
+                                word_spacing_mult = max(0.6, round(word_spacing_mult - 0.1, 2))
+                            elif typography_sel_idx == 3:
+                                margin_side = max(10, margin_side - 5)
+                            elif typography_sel_idx == 4:
+                                theme_idx = (theme_idx - 1) % len(THEMES)
+                                write_theme_idx(theme_idx)
+                            recalculate_layout()
+                            if reader_lines:
+                                reader_scroll_y = max(0, min(reader_scroll_y, len(reader_lines) - lines_per_page))
+                            needs_redraw = True
+                        elif btn in (sdl2.SDL_CONTROLLER_BUTTON_DPAD_RIGHT, sdl2.SDL_CONTROLLER_BUTTON_RIGHTSHOULDER):
+                            if typography_sel_idx == 0:
+                                current_font_size = min(60, current_font_size + 2)
+                            elif typography_sel_idx == 1:
+                                line_spacing_mult = min(1.80, round(line_spacing_mult + 0.05, 2))
+                            elif typography_sel_idx == 2:
+                                word_spacing_mult = min(1.6, round(word_spacing_mult + 0.1, 2))
+                            elif typography_sel_idx == 3:
+                                margin_side = min(50, margin_side + 5)
+                            elif typography_sel_idx == 4:
+                                theme_idx = (theme_idx + 1) % len(THEMES)
+                                write_theme_idx(theme_idx)
+                            recalculate_layout()
+                            if reader_lines:
+                                reader_scroll_y = max(0, min(reader_scroll_y, len(reader_lines) - lines_per_page))
+                            needs_redraw = True
+                        elif btn in (sdl2.SDL_CONTROLLER_BUTTON_A, sdl2.SDL_CONTROLLER_BUTTON_B, sdl2.SDL_CONTROLLER_BUTTON_BACK):
+                            show_typography_popup = False
+                            save_current_reader_state()
+                            needs_redraw = True
+                    else:
+                        if btn == sdl2.SDL_CONTROLLER_BUTTON_DPAD_UP:
+                            handle_reader_direction(0, -1)
+                        elif btn == sdl2.SDL_CONTROLLER_BUTTON_DPAD_DOWN:
+                            handle_reader_direction(0, 1)
+                        elif btn == sdl2.SDL_CONTROLLER_BUTTON_DPAD_LEFT:
+                            handle_reader_direction(-1, 0)
+                        elif btn == sdl2.SDL_CONTROLLER_BUTTON_DPAD_RIGHT:
+                            handle_reader_direction(1, 0)
+                        elif btn == sdl2.SDL_CONTROLLER_BUTTON_LEFTSHOULDER: # Decrease Font
+                            current_font_size = max(20, current_font_size - 2)
+                            recalculate_layout()
+                            if reader_lines:
+                                reader_scroll_y = max(0, min(reader_scroll_y, len(reader_lines) - lines_per_page))
+                        elif btn == sdl2.SDL_CONTROLLER_BUTTON_RIGHTSHOULDER: # Increase Font
+                            current_font_size = min(60, current_font_size + 2)
+                            recalculate_layout()
+                            if reader_lines:
+                                reader_scroll_y = max(0, min(reader_scroll_y, len(reader_lines) - lines_per_page))
+                        elif btn == sdl2.SDL_CONTROLLER_BUTTON_X: # Physical Y - Theme Toggle
+                            theme_idx = (theme_idx + 1) % len(THEMES)
+                            write_theme_idx(theme_idx)
+                        elif btn == sdl2.SDL_CONTROLLER_BUTTON_Y: # Physical X - Rotate reader
+                            reader_rotation_idx = (reader_rotation_idx + 1) % 4
+                            write_reader_rotation_idx(reader_rotation_idx)
+                            recalculate_layout()
+                            if reader_lines:
+                                reader_scroll_y = max(0, min(reader_scroll_y, len(reader_lines) - lines_per_page))
+                        elif btn == sdl2.SDL_CONTROLLER_BUTTON_BACK: # SELECT - Return to Library
+                            save_current_reader_state()
+                            state = STATE_BROWSE
+                            needs_redraw = True
+                        elif btn == sdl2.SDL_CONTROLLER_BUTTON_A: # Physical B - Open TOC
+                            state = STATE_TOC
+                            toc_tab = 0
+                            toc_sel_index = 0
+                            for idx, (ch_title, ch_line) in enumerate(chapter_offsets):
+                                if ch_line <= reader_scroll_y:
+                                    toc_sel_index = idx
+                                else:
+                                    break
+                            needs_redraw = True
+                        elif btn == sdl2.SDL_CONTROLLER_BUTTON_B: # Physical A - Toggle HUD
+                            show_hud = not show_hud
+                            needs_redraw = True
                         
                 elif state == STATE_TOC:
                     if btn in (sdl2.SDL_CONTROLLER_BUTTON_LEFTSHOULDER, sdl2.SDL_CONTROLLER_BUTTON_RIGHTSHOULDER):
@@ -1608,6 +1738,7 @@ def main():
                     elif btn == sdl2.SDL_CONTROLLER_BUTTON_Y: # Physical X - View Image Fullscreen
                         if toc_tab == 1 and len(book_images) > 0:
                             current_image_idx = toc_img_sel_index
+                            image_view_source = "toc"
                             state = STATE_IMAGE_VIEW
                             image_zoom = -1.0
                             image_pan_x = 0
@@ -1650,8 +1781,14 @@ def main():
                         needs_redraw = True
                     elif btn == sdl2.SDL_CONTROLLER_BUTTON_B: # Physical A - Toggle HUD
                         show_hud = not show_hud
-                    elif btn in (sdl2.SDL_CONTROLLER_BUTTON_A, sdl2.SDL_CONTROLLER_BUTTON_BACK): # Physical B or Select - Back to Reader
-                        state = STATE_READER
+                    elif btn in (sdl2.SDL_CONTROLLER_BUTTON_A, sdl2.SDL_CONTROLLER_BUTTON_BACK): # Physical B or Select
+                        if image_view_source == "toc":
+                            state = STATE_TOC
+                            toc_tab = 1
+                            toc_img_sel_index = current_image_idx
+                        else:
+                            state = STATE_READER
+                        needs_redraw = True
                     elif btn == sdl2.SDL_CONTROLLER_BUTTON_DPAD_UP:
                         if image_zoom > 0:
                             image_pan_y += 60
@@ -2086,20 +2223,20 @@ def main():
 
                 y_pos = 50
                 max_y = reader_h - 55 # Leave room for footer
+                max_content_w = max(100, reader_w - (margin_side * 2))
                 i = reader_scroll_y
                 while i < len(reader_lines):
                     item = reader_lines[i]
                     if isinstance(item, dict) and item.get("type") == "image":
-                        cached = get_inline_image(item["src"], reader_w - 40, reader_h - 110)
+                        cached = get_inline_image(item["src"], max_content_w, reader_h - 110)
                         if cached:
                             tex = cached["tex"]
                             iw = cached["w"]
                             ih = cached["h"]
                             step = ih + 12
-                            # If image won't fit on this page and we already drew lines, break to next page
                             if y_pos > 50 and (y_pos + step > max_y):
                                 break
-                            draw_x = 20 + (reader_w - 40 - iw) // 2
+                            draw_x = margin_side + (max_content_w - iw) // 2
                             draw_y = y_pos
                             sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(draw_x, draw_y, iw, ih))
                             y_pos += step
@@ -2107,7 +2244,7 @@ def main():
                             fn = os.path.basename(item["src"])
                             tex, tw, th = render_text(f"[ {fn} ]", font_small, theme["sel"])
                             if tex:
-                                sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(20, y_pos, tw, th))
+                                sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(margin_side, y_pos, tw, th))
                                 sdl2.SDL_DestroyTexture(tex)
                             y_pos += line_height
                     elif isinstance(item, dict) and item.get("type") == "footnote":
@@ -2116,35 +2253,31 @@ def main():
                         f_pad_x = 18
                         f_pad_y = 10
                         f_line_h = int(line_height * 0.85)
-                        box_w = reader_w - 40
+                        box_w = max_content_w
                         box_h = f_pad_y * 2 + (len(f_lines) + 1) * f_line_h
                         step = box_h + 14
                         if y_pos > 50 and (y_pos + step > max_y):
                             break
                         
                         # Glassmorphic Callout Box
-                        renderer.fill((20, y_pos, box_w, box_h), theme.get("header", theme["bg"]))
-                        # Left Accent Indicator Line (4px thick)
-                        renderer.fill((20, y_pos, 4, box_h), theme["sel"])
-                        # 1px Subtle Card Border (Top, Bottom, Right)
+                        renderer.fill((margin_side, y_pos, box_w, box_h), theme.get("header", theme["bg"]))
+                        renderer.fill((margin_side, y_pos, 4, box_h), theme["sel"])
                         divider_col = theme.get("divider", theme["header"])
-                        renderer.fill((20, y_pos, box_w, 1), divider_col)
-                        renderer.fill((20, y_pos + box_h - 1, box_w, 1), divider_col)
-                        renderer.fill((20 + box_w - 1, y_pos, 1, box_h), divider_col)
+                        renderer.fill((margin_side, y_pos, box_w, 1), divider_col)
+                        renderer.fill((margin_side, y_pos + box_h - 1, box_w, 1), divider_col)
+                        renderer.fill((margin_side + box_w - 1, y_pos, 1, box_h), divider_col)
                         
-                        # Title: "💡 Chú thích (*):"
                         cur_fy = y_pos + f_pad_y
                         tex_title, tw, th = render_text(f"💡 Chú thích {marker}:", font_small, theme["sel"])
                         if tex_title:
-                            sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_title, None, sdl2.SDL_Rect(20 + f_pad_x, cur_fy, min(tw, box_w - f_pad_x * 2), th))
+                            sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_title, None, sdl2.SDL_Rect(margin_side + f_pad_x, cur_fy, min(tw, box_w - f_pad_x * 2), th))
                             sdl2.SDL_DestroyTexture(tex_title)
                         cur_fy += f_line_h
                         
-                        # Body lines in Secondary / Subtle text color
                         for fl in f_lines:
                             tex_fl, fw, fh = render_text(fl, font_small, theme.get("secondary", theme["text"]))
                             if tex_fl:
-                                sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_fl, None, sdl2.SDL_Rect(20 + f_pad_x, cur_fy, min(fw, box_w - f_pad_x * 2), fh))
+                                sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_fl, None, sdl2.SDL_Rect(margin_side + f_pad_x, cur_fy, min(fw, box_w - f_pad_x * 2), fh))
                                 sdl2.SDL_DestroyTexture(tex_fl)
                             cur_fy += f_line_h
                             
@@ -2161,7 +2294,7 @@ def main():
                             break
                         tex, tw, th = render_text(line, font_medium, theme["text"])
                         if tex:
-                            sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(20, y_pos, tw, th))
+                            sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(margin_side, y_pos, tw, th))
                             sdl2.SDL_DestroyTexture(tex)
                         y_pos += step
                     i += 1
@@ -2170,14 +2303,12 @@ def main():
                 
                 # HUD Elements
                 if show_hud:
-                    # Progress bar
                     if len(reader_lines) > 0:
                         progress = min(1.0, reader_scroll_y / max(1, len(reader_lines) - lines_per_page))
-                        bar_w = int((reader_w - 40) * progress)
-                        renderer.fill((20, reader_h - 10, reader_w - 40, 5), theme["sel"])
-                        renderer.fill((20, reader_h - 10, bar_w, 5), theme["text"])
+                        bar_w = int((reader_w - (margin_side * 2)) * progress)
+                        renderer.fill((margin_side, reader_h - 10, reader_w - (margin_side * 2), 5), theme["sel"])
+                        renderer.fill((margin_side, reader_h - 10, bar_w, 5), theme["text"])
                     
-                    # Top HUD: Chapter Name and Page Number
                     curr_chap = "Chapter 1"
                     for ch_title, ch_line in chapter_offsets:
                         if ch_line <= reader_scroll_y:
@@ -2195,14 +2326,81 @@ def main():
                         hud_top = f"{book_title} - Page {curr_page}/{total_pages}"
                     tex, tw, th = render_text(hud_top, font_small, theme["text"])
                     if tex:
-                        sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(20, 15, min(tw, reader_w-40), th))
+                        sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(margin_side, 15, min(tw, reader_w - (margin_side * 2)), th))
                         sdl2.SDL_DestroyTexture(tex)
                     
-                    footer = f"Size: {current_font_size} | L/R: Aa | X: Rotate | Y: Theme | B/L2/R2: Contents | SELECT: LIB"
+                    footer = f"R2: Typography | Size: {current_font_size} | L/R: Aa | X: Rotate | Y: Theme | B/L2: TOC | SELECT: LIB"
                     tex, tw, th = render_text(footer, font_small, theme["text"])
                     if tex:
-                        sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(20, reader_h - 45, min(tw, reader_w-40), th))
+                        sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(margin_side, reader_h - 45, min(tw, reader_w - (margin_side * 2)), th))
                         sdl2.SDL_DestroyTexture(tex)
+
+                # Render Typography & Spacing Modal Popup
+                if show_typography_popup:
+                    renderer.fill((0, 0, reader_w, reader_h), (0, 0, 0, 160))
+                    
+                    pw = min(680, reader_w - 40)
+                    ph = min(460, reader_h - 40)
+                    px = (reader_w - pw) // 2
+                    py = (reader_h - ph) // 2
+                    
+                    renderer.fill((px, py, pw, ph), (18, 18, 24))
+                    renderer.fill((px, py, pw, 3), theme["sel"])
+                    renderer.fill((px, py + ph - 3, pw, 3), theme["sel"])
+                    renderer.fill((px, py, 3, ph), theme["sel"])
+                    renderer.fill((px + pw - 3, py, 3, ph), theme["sel"])
+                    
+                    header_h = 58
+                    renderer.fill((px + 3, py + 3, pw - 6, header_h), theme.get("header", (28, 28, 36)))
+                    renderer.fill((px + 3, py + header_h + 3, pw - 6, 1), theme["divider"])
+                    
+                    tex_hdr, hw, hh = render_text("CÀI ĐẶT HIỂN THỊ (TYPOGRAPHY)", font_ui_medium, theme["sel"])
+                    if tex_hdr:
+                        sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_hdr, None, sdl2.SDL_Rect(px + (pw - hw) // 2, py + (header_h - hh) // 2 + 3, hw, hh))
+                        sdl2.SDL_DestroyTexture(tex_hdr)
+                        
+                    options = [
+                        ("Cỡ chữ (Font Size)", f"{current_font_size} px"),
+                        ("Giãn dòng (Line Spacing)", f"{line_spacing_mult:.2f}x"),
+                        ("Giãn từ (Word Spacing)", f"{word_spacing_mult:.1f}x"),
+                        ("Căn lề (Side Margin)", f"{margin_side} px"),
+                        ("Chủ đề màu (Theme)", THEMES[theme_idx].get("name", f"Theme {theme_idx+1}"))
+                    ]
+                    
+                    row_y_start = py + header_h + 16
+                    row_h = 56
+                    for r_idx, (label, val_str) in enumerate(options):
+                        ry = row_y_start + r_idx * (row_h + 6)
+                        rx = px + 24
+                        rw = pw - 48
+                        is_sel = (r_idx == typography_sel_idx)
+                        
+                        if is_sel:
+                            renderer.fill((rx, ry, rw, row_h), theme["sel"])
+                            renderer.fill((rx + 2, ry + 2, rw - 4, row_h - 4), (34, 40, 52))
+                            label_col = theme.get("sel_text", (255, 255, 255, 255))
+                            val_col = theme["sel"]
+                        else:
+                            renderer.fill((rx, ry, rw, row_h), (26, 26, 34))
+                            label_col = theme["secondary"]
+                            val_col = theme["text"]
+                            
+                        tex_lbl, lw, lh = render_text(label, font_small, label_col)
+                        if tex_lbl:
+                            sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_lbl, None, sdl2.SDL_Rect(rx + 16, ry + (row_h - lh) // 2, lw, lh))
+                            sdl2.SDL_DestroyTexture(tex_lbl)
+                            
+                        display_val = f"◀  {val_str}  ▶" if is_sel else val_str
+                        tex_v, vw, vh = render_text(display_val, font_small, val_col)
+                        if tex_v:
+                            sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_v, None, sdl2.SDL_Rect(rx + rw - vw - 16, ry + (row_h - vh) // 2, vw, vh))
+                            sdl2.SDL_DestroyTexture(tex_v)
+                            
+                    footer_y = py + ph - 42
+                    tex_foot, fw, fh = render_text("D-Pad: Chọn & Tăng/Giảm   |   A / B / R2: Đóng & Lưu", font_small, (180, 180, 190, 255))
+                    if tex_foot:
+                        sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_foot, None, sdl2.SDL_Rect(px + (pw - fw) // 2, footer_y, fw, fh))
+                        sdl2.SDL_DestroyTexture(tex_foot)
 
                 if drawing_rotated:
                     sdl2.SDL_SetRenderTarget(renderer.sdlrenderer, None)
