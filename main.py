@@ -1119,6 +1119,11 @@ def main():
     last_axis_scroll = 0
     show_hud = True
     
+    left_axis_held = False
+    last_left_axis_time = 0
+    right_axis_held = False
+    last_right_axis_time = 0
+    
     while running:
         events = sdl2.ext.get_events()
         if len(events) > 0:
@@ -1136,6 +1141,11 @@ def main():
             ry = sdl2.SDL_GameControllerGetAxis(c, sdl2.SDL_CONTROLLER_AXIS_RIGHTY)
             ax = lx if abs(lx) >= abs(rx) else rx
             ay = ly if abs(ly) >= abs(ry) else ry
+
+            if abs(lx) < 10000 and abs(ly) < 10000 and abs(rx) < 10000 and abs(ry) < 10000:
+                left_axis_held = False
+                right_axis_held = False
+
             if abs(ay) >= 15000 and abs(ay) >= abs(ax):
                 if ay < 0:
                     axis_up = True
@@ -1146,7 +1156,61 @@ def main():
                     axis_left = True
                 else:
                     axis_right = True
-            if state == STATE_READER and (current_ticks - last_axis_scroll > 100):
+
+            # Dedicated Joystick Axis handling for STATE_TOC (1:1 smooth responsiveness like D-Pad)
+            if state == STATE_TOC:
+                if not left_axis_held or (current_ticks - last_left_axis_time > 180):
+                    if abs(ay) >= 15000 and abs(ay) >= abs(ax):
+                        if toc_tab == 0:
+                            # Tab 0: Chapter List (Up/Down 1 item)
+                            if len(chapter_offsets) > 0:
+                                if ay < 0: # Up
+                                    toc_sel_index = (toc_sel_index - 1) % len(chapter_offsets)
+                                else: # Down
+                                    toc_sel_index = (toc_sel_index + 1) % len(chapter_offsets)
+                                needs_redraw = True
+                        else:
+                            # Tab 1: Images Grid 2x4 (Up/Down jump row 4 items)
+                            img_cols = 4
+                            total_imgs = len(book_images)
+                            if total_imgs > 0:
+                                if ay < 0: # Up
+                                    if toc_img_sel_index >= img_cols:
+                                        toc_img_sel_index -= img_cols
+                                    else:
+                                        toc_img_sel_index = 0
+                                else: # Down
+                                    if toc_img_sel_index + img_cols < total_imgs:
+                                        toc_img_sel_index += img_cols
+                                    else:
+                                        toc_img_sel_index = total_imgs - 1
+                                needs_redraw = True
+                        left_axis_held = True
+                        last_left_axis_time = current_ticks
+                        break
+                    elif abs(ax) >= 15000 and abs(ax) > abs(ay):
+                        if toc_tab == 0:
+                            # Tab 0: Jump 8 chapters
+                            if len(chapter_offsets) > 0:
+                                if ax < 0: # Left
+                                    toc_sel_index = max(0, toc_sel_index - visible_items)
+                                else: # Right
+                                    toc_sel_index = min(len(chapter_offsets) - 1, toc_sel_index + visible_items)
+                                needs_redraw = True
+                        else:
+                            # Tab 1: Image Left/Right 1 item
+                            total_imgs = len(book_images)
+                            if total_imgs > 0:
+                                if ax < 0: # Left
+                                    toc_img_sel_index = max(0, toc_img_sel_index - 1)
+                                else: # Right
+                                    toc_img_sel_index = min(total_imgs - 1, toc_img_sel_index + 1)
+                                needs_redraw = True
+                        left_axis_held = True
+                        last_left_axis_time = current_ticks
+                        break
+
+            elif state == STATE_READER and (current_ticks - last_axis_scroll > 100):
                 if abs(ax) >= 15000 or abs(ay) >= 15000:
                     if abs(ax) > abs(ay):
                         handle_reader_direction(1 if ax > 0 else -1, 0)
@@ -1533,14 +1597,14 @@ def main():
 
         elif state == STATE_TOC:
             if toc_tab == 0:
-                # Tab 0: Chapters List
-                if is_up:
+                # Tab 0: Chapters List (D-Pad)
+                if dpad_up_held:
                     if dpad_timer == 0 or (dpad_timer > 15 and dpad_timer % 3 == 0):
                         if len(chapter_offsets) > 0:
                             toc_sel_index = (toc_sel_index - 1) % len(chapter_offsets)
                         needs_redraw = True
                     dpad_timer += 1
-                elif is_down:
+                elif dpad_down_held:
                     if dpad_timer == 0 or (dpad_timer > 15 and dpad_timer % 3 == 0):
                         if len(chapter_offsets) > 0:
                             toc_sel_index = (toc_sel_index + 1) % len(chapter_offsets)
@@ -1549,13 +1613,13 @@ def main():
                 else:
                     dpad_timer = 0
 
-                if is_left:
+                if dpad_left_held:
                     if dpad_horiz_timer == 0 or (dpad_horiz_timer > 15 and dpad_horiz_timer % 4 == 0):
                         if len(chapter_offsets) > 0:
                             toc_sel_index = max(0, toc_sel_index - visible_items)
                         needs_redraw = True
                     dpad_horiz_timer += 1
-                elif is_right:
+                elif dpad_right_held:
                     if dpad_horiz_timer == 0 or (dpad_horiz_timer > 15 and dpad_horiz_timer % 4 == 0):
                         if len(chapter_offsets) > 0:
                             toc_sel_index = min(len(chapter_offsets) - 1, toc_sel_index + visible_items)
@@ -1564,10 +1628,10 @@ def main():
                 else:
                     dpad_horiz_timer = 0
             else:
-                # Tab 1: Images Grid 2x4 (8 images per page)
+                # Tab 1: Images Grid 2x4 (D-Pad)
                 img_cols = 4
                 total_imgs = len(book_images)
-                if is_up:
+                if dpad_up_held:
                     if dpad_timer == 0 or (dpad_timer > 15 and dpad_timer % 3 == 0):
                         if total_imgs > 0:
                             if toc_img_sel_index >= img_cols:
@@ -1576,7 +1640,7 @@ def main():
                                 toc_img_sel_index = 0
                         needs_redraw = True
                     dpad_timer += 1
-                elif is_down:
+                elif dpad_down_held:
                     if dpad_timer == 0 or (dpad_timer > 15 and dpad_timer % 3 == 0):
                         if total_imgs > 0:
                             if toc_img_sel_index + img_cols < total_imgs:
@@ -1588,13 +1652,13 @@ def main():
                 else:
                     dpad_timer = 0
 
-                if is_left:
+                if dpad_left_held:
                     if dpad_horiz_timer == 0 or (dpad_horiz_timer > 15 and dpad_horiz_timer % 3 == 0):
                         if total_imgs > 0:
                             toc_img_sel_index = max(0, toc_img_sel_index - 1)
                         needs_redraw = True
                     dpad_horiz_timer += 1
-                elif is_right:
+                elif dpad_right_held:
                     if dpad_horiz_timer == 0 or (dpad_horiz_timer > 15 and dpad_horiz_timer % 3 == 0):
                         if total_imgs > 0:
                             toc_img_sel_index = min(total_imgs - 1, toc_img_sel_index + 1)
