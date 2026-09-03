@@ -1143,43 +1143,54 @@ def main():
             while reader_scroll_y < max_s and is_blank(reader_scroll_y):
                 reader_scroll_y += 1
     
-    def recalculate_layout():
-        nonlocal lines_per_page, line_height, chars_per_line, font_medium, reader_lines, chapter_offsets
-        # Close old font
+    space_width = 12
+
+    def recalculate_layout(only_metrics=False):
+        nonlocal lines_per_page, line_height, font_medium, reader_lines, chapter_offsets, space_width
+        reader_w, reader_h = get_reader_view_size()
+        line_height = max(16, int(current_font_size * line_spacing_mult))
+        lines_per_page = max(1, (reader_h - 105) // line_height)
+        
+        if only_metrics:
+            return
+
         if font_medium:
             sdlttf.TTF_CloseFont(font_medium)
         font_medium = sdlttf.TTF_OpenFont(reading_font_bytes, current_font_size)
         
-        # Calculate fitting
-        reader_w, reader_h = get_reader_view_size()
-        line_height = max(16, int(current_font_size * line_spacing_mult))
-        # Reserve 55px for footer + 50px top padding = 105px reserved
-        lines_per_page = max(1, (reader_h - 105) // line_height)
-        
-        max_line_width = max(100, reader_w - (margin_side * 2))
-        
-        import ctypes
+        # Fast character width measurement
         w = ctypes.c_int()
         h = ctypes.c_int()
+        char_widths = {}
         
-        # Re-wrap text
+        # Pre-measure common characters to eliminate CTypes FFI overhead during paragraph wrapping
+        common_chars = " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~" \
+                       "àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ" \
+                       "ÀÁẢÃẠĂẰẮẲẴẶÂẦẤẨẪẬÈÉẺẼẸÊỀẾỂỄỆÌÍỈĨỊÒÓỎÕỌÔỒỐỔỖỘƠỜỚỞỠỢÙÚỦŨỤƯỪỨỬỮỰỲÝỶỸỴĐ" \
+                       "“”‘’…—–·•«»"
+        for ch in common_chars:
+            sdlttf.TTF_SizeUTF8(font_medium, ch.encode('utf-8', errors='replace'), ctypes.byref(w), ctypes.byref(h))
+            char_widths[ch] = w.value
+            
+        def get_w(ch):
+            if ch not in char_widths:
+                sdlttf.TTF_SizeUTF8(font_medium, ch.encode('utf-8', errors='replace'), ctypes.byref(w), ctypes.byref(h))
+                char_widths[ch] = w.value
+            return char_widths[ch]
+            
+        def get_word_w(word_str):
+            return sum(get_w(c) for c in word_str)
+            
+        base_space_w = get_w(" ")
+        space_width = max(2, int(base_space_w * word_spacing_mult))
+        indent_width = space_width * 3
+        max_line_width = max(100, reader_w - (margin_side * 2))
+        
         reader_lines = []
         chapter_offsets = []
         
-        # Cache to dramatically speed up width calculation (avoid C calls for every word)
-        word_width_cache = {}
-        def get_word_width(w_str):
-            if w_str not in word_width_cache:
-                sdlttf.TTF_SizeUTF8(font_medium, w_str.encode('utf-8', errors='replace'), ctypes.byref(w), ctypes.byref(h))
-                word_width_cache[w_str] = w.value
-            return word_width_cache[w_str]
-            
-        space_width = max(2, int(get_word_width(" ") * word_spacing_mult))
-        indent_width = space_width * 3
-        
         for title, text in raw_chapters:
             chapter_offsets.append((title, len(reader_lines)))
-            # Split text into paragraphs
             for paragraph in text.split('\n'):
                 paragraph = paragraph.replace('\t', '    ').strip()
                 if not paragraph:
@@ -1202,10 +1213,10 @@ def main():
                     f_lines = []
                     cur_f_line = []
                     cur_f_w = 0
-                    f_max_w = max_line_width - 40 # Callout box padding
+                    f_max_w = max_line_width - 40
                     for fw in f_words:
                         if not fw: continue
-                        fww = get_word_width(fw)
+                        fww = get_word_w(fw)
                         if not cur_f_line:
                             cur_f_line.append(fw)
                             cur_f_w += fww
@@ -1223,7 +1234,7 @@ def main():
                     reader_lines.append({"type": "footnote", "marker": marker, "lines": f_lines})
                     continue
                 
-                # Split by space to prevent breaking Vietnamese words
+                # Split words
                 words = paragraph.split(' ')
                 current_line = []
                 current_w = indent_width
@@ -1231,7 +1242,7 @@ def main():
                 
                 for word in words:
                     if not word: continue
-                    ww = get_word_width(word)
+                    ww = get_word_w(word)
                     
                     if not current_line:
                         current_line.append(word)
@@ -1421,31 +1432,37 @@ def main():
                             if ax < 0: # Left
                                 if typography_sel_idx == 0:
                                     current_font_size = max(20, current_font_size - 2)
+                                    recalculate_layout(only_metrics=False)
                                 elif typography_sel_idx == 1:
                                     line_spacing_mult = max(1.05, round(line_spacing_mult - 0.05, 2))
+                                    recalculate_layout(only_metrics=True)
                                 elif typography_sel_idx == 2:
                                     word_spacing_mult = max(0.6, round(word_spacing_mult - 0.1, 2))
+                                    recalculate_layout(only_metrics=False)
                                 elif typography_sel_idx == 3:
                                     margin_side = max(10, margin_side - 5)
+                                    recalculate_layout(only_metrics=False)
                                 elif typography_sel_idx == 4:
                                     theme_idx = (theme_idx - 1) % len(THEMES)
                                     write_theme_idx(theme_idx)
-                                recalculate_layout()
                                 if reader_lines:
                                     reader_scroll_y = max(0, min(reader_scroll_y, len(reader_lines) - lines_per_page))
                             else: # Right
                                 if typography_sel_idx == 0:
                                     current_font_size = min(60, current_font_size + 2)
+                                    recalculate_layout(only_metrics=False)
                                 elif typography_sel_idx == 1:
                                     line_spacing_mult = min(1.80, round(line_spacing_mult + 0.05, 2))
+                                    recalculate_layout(only_metrics=True)
                                 elif typography_sel_idx == 2:
                                     word_spacing_mult = min(1.6, round(word_spacing_mult + 0.1, 2))
+                                    recalculate_layout(only_metrics=False)
                                 elif typography_sel_idx == 3:
                                     margin_side = min(50, margin_side + 5)
+                                    recalculate_layout(only_metrics=False)
                                 elif typography_sel_idx == 4:
                                     theme_idx = (theme_idx + 1) % len(THEMES)
                                     write_theme_idx(theme_idx)
-                                recalculate_layout()
                                 if reader_lines:
                                     reader_scroll_y = max(0, min(reader_scroll_y, len(reader_lines) - lines_per_page))
                         last_axis_scroll = current_ticks
@@ -1664,32 +1681,38 @@ def main():
                         elif btn in (sdl2.SDL_CONTROLLER_BUTTON_DPAD_LEFT, sdl2.SDL_CONTROLLER_BUTTON_LEFTSHOULDER):
                             if typography_sel_idx == 0:
                                 current_font_size = max(20, current_font_size - 2)
+                                recalculate_layout(only_metrics=False)
                             elif typography_sel_idx == 1:
                                 line_spacing_mult = max(1.05, round(line_spacing_mult - 0.05, 2))
+                                recalculate_layout(only_metrics=True)
                             elif typography_sel_idx == 2:
                                 word_spacing_mult = max(0.6, round(word_spacing_mult - 0.1, 2))
+                                recalculate_layout(only_metrics=False)
                             elif typography_sel_idx == 3:
                                 margin_side = max(10, margin_side - 5)
+                                recalculate_layout(only_metrics=False)
                             elif typography_sel_idx == 4:
                                 theme_idx = (theme_idx - 1) % len(THEMES)
                                 write_theme_idx(theme_idx)
-                            recalculate_layout()
                             if reader_lines:
                                 reader_scroll_y = max(0, min(reader_scroll_y, len(reader_lines) - lines_per_page))
                             needs_redraw = True
                         elif btn in (sdl2.SDL_CONTROLLER_BUTTON_DPAD_RIGHT, sdl2.SDL_CONTROLLER_BUTTON_RIGHTSHOULDER):
                             if typography_sel_idx == 0:
                                 current_font_size = min(60, current_font_size + 2)
+                                recalculate_layout(only_metrics=False)
                             elif typography_sel_idx == 1:
                                 line_spacing_mult = min(1.80, round(line_spacing_mult + 0.05, 2))
+                                recalculate_layout(only_metrics=True)
                             elif typography_sel_idx == 2:
                                 word_spacing_mult = min(1.6, round(word_spacing_mult + 0.1, 2))
+                                recalculate_layout(only_metrics=False)
                             elif typography_sel_idx == 3:
                                 margin_side = min(50, margin_side + 5)
+                                recalculate_layout(only_metrics=False)
                             elif typography_sel_idx == 4:
                                 theme_idx = (theme_idx + 1) % len(THEMES)
                                 write_theme_idx(theme_idx)
-                            recalculate_layout()
                             if reader_lines:
                                 reader_scroll_y = max(0, min(reader_scroll_y, len(reader_lines) - lines_per_page))
                             needs_redraw = True
@@ -2319,7 +2342,7 @@ def main():
                         renderer.fill((margin_side + box_w - 1, y_pos, 1, box_h), divider_col)
                         
                         cur_fy = y_pos + f_pad_y
-                        tex_title, tw, th = render_text(f"💡 Chú thích {marker}:", font_small, theme["sel"])
+                        tex_title, tw, th = render_text(f"💡 Footnote {marker}:", font_small, theme["sel"])
                         if tex_title:
                             sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_title, None, sdl2.SDL_Rect(margin_side + f_pad_x, cur_fy, min(tw, box_w - f_pad_x * 2), th))
                             sdl2.SDL_DestroyTexture(tex_title)
@@ -2343,10 +2366,25 @@ def main():
                         step = line_height
                         if y_pos + step > max_y:
                             break
-                        tex, tw, th = render_text(line, font_medium, theme["text"])
-                        if tex:
-                            sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(margin_side, y_pos, tw, th))
-                            sdl2.SDL_DestroyTexture(tex)
+                        if word_spacing_mult == 1.0:
+                            tex, tw, th = render_text(line, font_medium, theme["text"])
+                            if tex:
+                                sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(margin_side, y_pos, min(tw, max_content_w), th))
+                                sdl2.SDL_DestroyTexture(tex)
+                        else:
+                            # Render word-by-word with true custom word spacing
+                            cur_x = margin_side
+                            words = line.split(' ')
+                            for w_item in words:
+                                if not w_item:
+                                    cur_x += space_width
+                                    continue
+                                tex_w, tw, th = render_text(w_item, font_medium, theme["text"])
+                                if tex_w:
+                                    if cur_x + tw <= margin_side + max_content_w:
+                                        sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_w, None, sdl2.SDL_Rect(cur_x, y_pos, tw, th))
+                                    sdl2.SDL_DestroyTexture(tex_w)
+                                cur_x += tw + space_width
                         y_pos += step
                     i += 1
                 
@@ -2642,18 +2680,18 @@ def main():
                 renderer.fill((pop_x + 3, pop_y + header_h + 3, pop_w - 6, 2), theme["sel"])
                 
                 sdlttf.TTF_SetFontStyle(font_ui_medium, sdlttf.TTF_STYLE_BOLD)
-                tex_hdr, hw, hh = render_text("CÀI ĐẶT HIỂN THỊ (TYPOGRAPHY)", font_ui_medium, theme["text"])
+                tex_hdr, hw, hh = render_text("TYPOGRAPHY SETTINGS", font_ui_medium, theme["text"])
                 sdlttf.TTF_SetFontStyle(font_ui_medium, sdlttf.TTF_STYLE_NORMAL)
                 if tex_hdr:
                     sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_hdr, None, sdl2.SDL_Rect(pop_x + (pop_w - hw) // 2, pop_y + (header_h - hh) // 2 + 3, hw, hh))
                     sdl2.SDL_DestroyTexture(tex_hdr)
                     
                 options = [
-                    ("Cỡ chữ (Font Size)", f"{current_font_size} px"),
-                    ("Giãn dòng (Line Spacing)", f"{line_spacing_mult:.2f}x"),
-                    ("Giãn từ (Word Spacing)", f"{word_spacing_mult:.1f}x"),
-                    ("Căn lề (Side Margin)", f"{margin_side} px"),
-                    ("Chủ đề màu (Theme)", THEMES[theme_idx].get("name", f"Theme {theme_idx+1}"))
+                    ("Font Size", f"{current_font_size} px"),
+                    ("Line Spacing", f"{line_spacing_mult:.2f}x"),
+                    ("Word Spacing", f"{word_spacing_mult:.1f}x"),
+                    ("Side Margin", f"{margin_side} px"),
+                    ("Theme", THEMES[theme_idx].get("name", f"Theme {theme_idx+1}"))
                 ]
                 
                 row_y_start = pop_y + header_h + 18
@@ -2690,7 +2728,7 @@ def main():
                         sdl2.SDL_DestroyTexture(tex_v)
                         
                 footer_y = pop_y + pop_h - 42
-                msg_foot = "A: Lưu   |   B / R2: Hủy bỏ   |   D-Pad: Chọn & Chỉnh"
+                msg_foot = "A: Save   |   B / R2: Cancel   |   D-Pad: Select & Adjust"
                 tex_foot, fw, fh = render_text(msg_foot, font_small, theme["text"])
                 if tex_foot:
                     sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_foot, None, sdl2.SDL_Rect(pop_x + (pop_w - fw) // 2, footer_y, fw, fh))
