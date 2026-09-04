@@ -208,6 +208,45 @@ def make_epub_image_loader(epub_file, all_image_names, opf_dir="", in_memory_dic
 
     return loader
 
+def detect_epub_item_title(clean_href, html_str, clean_text, book_title):
+    h_lower = clean_href.lower()
+    base = os.path.basename(h_lower)
+    
+    # 1. Check prominent heading tags (h1-h4, excluding head title which repeats the book name)
+    headings = re.findall(r'<(h[1-4])[^>]*>(.*?)</\1>', html_str, flags=re.DOTALL | re.IGNORECASE)
+    for tag, h in headings:
+        clean = html.unescape(re.sub(r'<[^>]+>', '', h).strip())
+        if clean and len(clean) < 70:
+            cl = clean.lower()
+            if book_title and (cl == book_title.lower() or cl.startswith(book_title.lower())):
+                continue
+            if not cl.startswith('untitled'):
+                return clean
+                
+    # 2. Check filename keywords for front/back matter
+    if any(k in base for k in ['cover', 'titlepage', 'bia']):
+        return 'Bìa sách'
+    if any(k in base for k in ['jacket']):
+        return 'Bìa lót'
+    if any(k in base for k in ['halftitle']):
+        return 'Tiêu đề phụ'
+    if any(k in base for k in ['copyright', 'ban-quyen', 'banquyen', 'colophon', 'license']):
+        return 'Bản quyền'
+    if any(k in base for k in ['info', 'about', 'tac-gia', 'tacgia']):
+        return 'Thông tin eBook'
+    if any(k in base for k in ['toc', 'nav', 'content', 'muc-luc', 'mucluc']):
+        return 'Mục lục'
+    if any(k in base for k in ['dedication', 'de-tang', 'detang']):
+        return 'Lời đề tặng'
+    if any(k in base for k in ['preface', 'loi-mo-dau', 'loimodau', 'foreword']):
+        return 'Lời mở đầu'
+    if any(k in base for k in ['index']):
+        return 'Chỉ mục'
+    if any(k in base for k in ['epilogue', 'hoi-ket', 'hoiket']):
+        return 'Hồi kết'
+        
+    return None
+
 class EPUBParser:
     @staticmethod
     def parse(filepath) -> Book:
@@ -237,6 +276,13 @@ class EPUBParser:
                 opf_content = zf.read(opf_path)
                 opf_root = ET.fromstring(opf_content)
                 
+                # Extract title and author metadata
+                for ch in opf_root.iter():
+                    if ch.tag.endswith('title') and ch.text and not book.title:
+                        book.title = ch.text.strip()
+                    elif ch.tag.endswith('creator') and ch.text and not book.author:
+                        book.author = ch.text.strip()
+                
                 manifest = {}
                 spine = []
                 for child in opf_root.iter():
@@ -246,21 +292,77 @@ class EPUBParser:
                         spine.append(child.attrib.get('idref'))
                 
                 toc_map = {}
-                for item_id, href in manifest.items():
-                    if href.endswith('.ncx'):
-                        try:
-                            ncx_content = zf.read(href if not opf_dir else f"{opf_dir}/{href}")
-                            ncx_root = ET.fromstring(ncx_content)
-                            for navPoint in ncx_root.iter():
-                                if navPoint.tag.endswith('navPoint'):
-                                    text_node = navPoint.find('.//*{http://www.daisy.org/z3986/2005/ncx/}text')
-                                    content_node = navPoint.find('.//*{http://www.daisy.org/z3986/2005/ncx/}content')
-                                    if text_node is not None and content_node is not None:
-                                        src = content_node.attrib.get('src', '').split('#')[0]
-                                        toc_map[src] = text_node.text
-                        except Exception:
-                            pass
-                
+                def add_toc_entry(href_val, title_val):
+                    t = html.unescape(title_val).strip()
+                    if not t or not href_val:
+                        return
+                    clean = href_val.split('#')[0].replace('\\', '/').strip()
+                    clean = urllib.parse.unquote(clean).lstrip('./')
+                    base = os.path.basename(clean)
+                    for k in (clean, clean.lower(), base, base.lower()):
+                        toc_map.setdefault(k, t)
+                    if opf_dir:
+                        full_p = f"{opf_dir}/{clean}"
+                        for k in (full_p, full_p.lower()):
+                            toc_map.setdefault(k, t)
+
+                # 1. Parse EPUB 2 NCX (from manifest or any .ncx in zip)
+                ncx_files = [href for _, href in manifest.items() if href.endswith('.ncx')]
+                if not ncx_files:
+                    ncx_files = [n for n in zf.namelist() if n.endswith('.ncx')]
+                for ncx_f in ncx_files:
+                    ncx_path = ncx_f if not opf_dir or ncx_f.startswith(opf_dir) else f"{opf_dir}/{ncx_f}"
+                    try:
+                        ncx_bytes = zf.read(ncx_path)
+                        ncx_root = ET.fromstring(ncx_bytes)
+                        for np in ncx_root.iter():
+                            if np.tag.endswith('navPoint'):
+                                t_node = None
+                                s_node = None
+                                for child in np:
+                                    if child.tag.endswith('navLabel'):
+                                        for sub in child:
+                                            if sub.tag.endswith('text') and sub.text:
+                                                t_node = sub.text
+                                    elif child.tag.endswith('content'):
+                                        s_node = child.attrib.get('src', '')
+                                if not t_node:
+                                    for sub in np.iter():
+                                        if sub.tag.endswith('text') and sub.text:
+                                            t_node = sub.text
+                                            break
+                                if not s_node:
+                                    for sub in np.iter():
+                                        if sub.tag.endswith('content'):
+                                            s_node = sub.attrib.get('src', '')
+                                            break
+                                if t_node and s_node:
+                                    add_toc_entry(s_node, t_node)
+                    except Exception:
+                        pass
+
+                # 2. Parse EPUB 3 NAV (nav.xhtml / toc.xhtml / properties="nav")
+                nav_files = [href for _, href in manifest.items() if 'nav' in href.lower() and (href.endswith('.xhtml') or href.endswith('.html'))]
+                if not nav_files:
+                    for name in zf.namelist():
+                        if 'nav' in name.lower() and (name.endswith('.xhtml') or name.endswith('.html')):
+                            nav_files.append(name)
+                for nav_f in nav_files:
+                    nav_path = nav_f if not opf_dir or nav_f.startswith(opf_dir) else f"{opf_dir}/{nav_f}"
+                    try:
+                        nav_html = zf.read(nav_path).decode('utf-8', errors='ignore')
+                        matches = re.findall(r'<a[^>]+href=[\x27\x22]([^\x27\x22]+)[\x27\x22][^>]*>(.*?)</a>', nav_html, flags=re.DOTALL)
+                        for h_val, t_val in matches:
+                            clean_t = re.sub(r'<[^>]+>', '', t_val).strip()
+                            if clean_t:
+                                add_toc_entry(h_val, clean_t)
+                    except Exception:
+                        pass
+
+                # 3. Process spine items into book chapters
+                first_main_chap_seen = False
+                content_chapter_num = 0
+
                 for idx, item_id in enumerate(spine):
                     if item_id in manifest:
                         href = manifest[item_id]
@@ -269,9 +371,53 @@ class EPUBParser:
                             html_bytes = zf.read(item_path)
                             html_str = html_bytes.decode('utf-8', errors='ignore')
                             clean_text = clean_html_to_clean_text(html_str)
-                            if clean_text:
-                                title = toc_map.get(href, f"Chapter {idx+1}")
-                                book.chapters.append(Chapter(title, clean_text))
+                            if not clean_text:
+                                continue
+                                
+                            clean_href = href.replace('\\', '/').strip()
+                            clean_href = urllib.parse.unquote(clean_href).lstrip('./')
+                            base_href = os.path.basename(clean_href)
+
+                            title = (toc_map.get(clean_href) or 
+                                     toc_map.get(clean_href.lower()) or 
+                                     toc_map.get(base_href) or 
+                                     toc_map.get(base_href.lower()))
+
+                            if title:
+                                first_main_chap_seen = True
+                            else:
+                                # Fallback 1: detect front/back matter or prominent heading
+                                fm_title = detect_epub_item_title(clean_href, html_str, clean_text, book.title)
+                                if fm_title:
+                                    title = fm_title
+                                else:
+                                    # Fallback 2: check text lines for chapter headings
+                                    first_lines = [l.strip() for l in clean_text.split('\n')[:3] if l.strip()]
+                                    found_line = None
+                                    for fl in first_lines:
+                                        fl_l = fl.lower()
+                                        if any(fl_l.startswith(k) for k in ['chương', 'chapter', 'phần', 'hồi', 'part', 'book', 'mục', 'tập', 'quyển']):
+                                            found_line = fl[:60]
+                                            first_main_chap_seen = True
+                                            break
+                                    if found_line:
+                                        title = found_line
+                                    elif not first_main_chap_seen:
+                                        # Leading front-matter before book chapters
+                                        lead_lower = clean_text[:300].lower()
+                                        if any(k in lead_lower for k in ['dành tặng', 'đề tặng', 'tặng ']):
+                                            title = 'Lời đề tặng'
+                                        elif any(k in lead_lower for k in ['kiệt tác', 'lời khen', 'đánh giá']):
+                                            title = 'Lời khen tặng'
+                                        elif any(k in lead_lower for k in ['giới thiệu']):
+                                            title = 'Lời giới thiệu'
+                                        else:
+                                            title = 'Thông tin'
+                                    else:
+                                        content_chapter_num += 1
+                                        title = f"Chapter {content_chapter_num}"
+
+                            book.chapters.append(Chapter(title, clean_text))
                         except Exception:
                             pass
         return book
@@ -375,7 +521,9 @@ class KindleParser:
                     if len(h) >= 12 and h[:4] == b'RIFF' and h[8:12] == b'WEBP': return 'webp'
                     return None
                 _ih.what = _what
-                sys.modules['imghdr'] = _ih
+            vendor_dir = os.path.join(os.path.dirname(__file__), 'vendor')
+            if os.path.isdir(vendor_dir) and vendor_dir not in sys.path:
+                sys.path.insert(0, vendor_dir)
             import mobi
             extracted_dir, filepath_extracted = mobi.extract(filepath)
             try:
