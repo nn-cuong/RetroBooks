@@ -1124,15 +1124,25 @@ def main():
                             image_pan_x = 0
                             image_pan_y = 0
                             needs_redraw = True
-                    elif btn == sdl2.SDL_CONTROLLER_BUTTON_X: # Physical Y - Zoom Toggle
+                    elif btn == sdl2.SDL_CONTROLLER_BUTTON_X: # Physical Y - Zoom In
                         if image_zoom <= 0:
-                            image_zoom = 1.5
-                        elif image_zoom == 1.5:
-                            image_zoom = 2.0
+                            vw, vh = SCREEN_W, SCREEN_H
+                            eff_w, eff_h = (image_h, image_w) if image_rotation % 2 == 1 else (image_w, image_h)
+                            fit_zoom = min(float(vw) / eff_w, float(vh) / eff_h) if eff_w > 0 and eff_h > 0 else 1.0
+                            image_zoom = min(fit_zoom * 1.25, 4.0)
+                        else:
+                            image_zoom = min(image_zoom * 1.25, 4.0)
+                        needs_redraw = True
+                    elif btn == sdl2.SDL_CONTROLLER_BUTTON_B: # Physical A - Zoom Out
+                        vw, vh = SCREEN_W, SCREEN_H
+                        eff_w, eff_h = (image_h, image_w) if image_rotation % 2 == 1 else (image_w, image_h)
+                        fit_zoom = min(float(vw) / eff_w, float(vh) / eff_h) if eff_w > 0 and eff_h > 0 else 1.0
+                        if image_zoom > fit_zoom * 1.05:
+                            image_zoom = max(image_zoom / 1.25, fit_zoom)
                         else:
                             image_zoom = -1.0
-                        image_pan_x = 0
-                        image_pan_y = 0
+                            image_pan_x = 0
+                            image_pan_y = 0
                         needs_redraw = True
                     elif btn == sdl2.SDL_CONTROLLER_BUTTON_Y: # Physical X - Rotate
                         image_rotation = (image_rotation + 1) % 4
@@ -1140,9 +1150,7 @@ def main():
                         image_pan_x = 0
                         image_pan_y = 0
                         needs_redraw = True
-                    elif btn == sdl2.SDL_CONTROLLER_BUTTON_B: # Physical A - Toggle HUD
-                        show_hud = not show_hud
-                    elif btn in (sdl2.SDL_CONTROLLER_BUTTON_A, sdl2.SDL_CONTROLLER_BUTTON_BACK): # Physical B or Select
+                    elif btn in (sdl2.SDL_CONTROLLER_BUTTON_A, sdl2.SDL_CONTROLLER_BUTTON_BACK): # Physical B or Select - Back
                         if image_view_source == "toc":
                             state = STATE_TOC
                             toc_tab = 1

@@ -181,3 +181,9 @@ LIBRARY_THEMES = [
         "sel_sec": make_sdl_color(190, 185, 172, 255), # #BEB9AC
     }
 ]
+
+def get_book_display_metadata(filename):
+    """Derive library label from a filename without changing the real path."""
+    stem = os.path.splitext(filename)[0]
+    return stem.strip(), ""
+

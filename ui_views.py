@@ -8,7 +8,7 @@ try:
 except ImportError:
     pass
 
-from constants import SCREEN_W, SCREEN_H, THEMES, LIBRARY_THEMES
+from constants import SCREEN_W, SCREEN_H, THEMES, LIBRARY_THEMES, get_book_display_metadata
 from covers import get_inline_image, get_book_img_thumbnail
 
 def draw_book_icon(renderer, x, y, color, background):
@@ -480,33 +480,47 @@ def draw_image_view(
     renderer.clear(theme["bg"])
     if tex and image_w > 0 and image_h > 0:
         vw, vh = SCREEN_W, SCREEN_H
-        if image_rotation % 2 == 1:
-            vw, vh = SCREEN_H, SCREEN_W
-        if image_zoom <= 0:
-            scale = min(float(vw) / image_w, float(vh) / image_h)
+        angle = float(image_rotation * 90)
+        eff_w, eff_h = (image_h, image_w) if image_rotation % 2 == 1 else (image_w, image_h)
+
+        fit_zoom = min(float(vw) / eff_w, float(vh) / eff_h)
+        zoom = image_zoom if image_zoom > 0 else fit_zoom
+
+        scaled_w = int(image_w * zoom)
+        scaled_h = int(image_h * zoom)
+
+        draw_x = (vw - scaled_w) // 2 + image_pan_x
+        draw_y = (vh - scaled_h) // 2 + image_pan_y
+
+        dst_rect = sdl2.SDL_Rect(draw_x, draw_y, scaled_w, scaled_h)
+        if angle != 0.0:
+            sdl2.SDL_RenderCopyEx(renderer.sdlrenderer, tex, None, dst_rect, angle, None, sdl2.SDL_FLIP_NONE)
         else:
-            scale = image_zoom
-        dw = int(image_w * scale)
-        dh = int(image_h * scale)
-        cx = (vw - dw) // 2 + image_pan_x
-        cy = (vh - dh) // 2 + image_pan_y
-        src_rect = sdl2.SDL_Rect(0, 0, image_w, image_h)
-        dst_rect = sdl2.SDL_Rect(cx, cy, dw, dh)
-        sdl2.SDL_RenderCopyEx(renderer.sdlrenderer, tex, src_rect, dst_rect, float(image_rotation * 90), None, sdl2.SDL_FLIP_NONE)
+            sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, dst_rect)
+    else:
+        msg = "Cannot load this image"
+        tex_err, ew, eh = render_text(msg, font_medium, theme["text"])
+        if tex_err:
+            sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_err, None, sdl2.SDL_Rect((SCREEN_W-ew)//2, (SCREEN_H-eh)//2, ew, eh))
+            sdl2.SDL_DestroyTexture(tex_err)
 
-    if show_hud:
-        hud_bg = sdl2.SDL_Color(theme["bg"].r, theme["bg"].g, theme["bg"].b, 210) if hasattr(theme["bg"], "r") else theme["bg"]
-        renderer.fill((0, 0, SCREEN_W, 50), hud_bg)
-        img_name = os.path.basename(book_images[current_image_idx]) if (book_images and current_image_idx < len(book_images)) else "Image"
-        title_str = f"{os.path.basename(current_filepath)} - {img_name} ({current_image_idx+1}/{len(book_images)})"
-        t_tex, tw, th = render_text(title_str, font_small, theme["text"])
-        if t_tex:
-            sdl2.SDL_RenderCopy(renderer.sdlrenderer, t_tex, None, sdl2.SDL_Rect(20, (50 - th)//2, min(tw, SCREEN_W - 40), th))
-            sdl2.SDL_DestroyTexture(t_tex)
+    if show_hud and book_images:
+        renderer.fill((0, 0, SCREEN_W, 55), theme["header"])
+        renderer.fill((0, 53, SCREEN_W, 2), theme["sel"])
 
-        renderer.fill((0, SCREEN_H - 45, SCREEN_W, 45), hud_bg)
-        hint = "D-Pad: Pan   |   L1/R1: Zoom   |   Y: Rotate   |   X: Jump to text   |   B: Back"
-        t_hint, hw, hh = render_text(hint, font_small, theme["text"])
-        if t_hint:
-            sdl2.SDL_RenderCopy(renderer.sdlrenderer, t_hint, None, sdl2.SDL_Rect(20, SCREEN_H - 45 + (45 - hh)//2, hw, hh))
-            sdl2.SDL_DestroyTexture(t_hint)
+        cur_img_name = os.path.basename(book_images[current_image_idx]) if current_image_idx < len(book_images) else "Image"
+        book_title, _ = get_book_display_metadata(os.path.basename(current_filepath))
+        hud_top = f"{book_title} - Image {current_image_idx + 1}/{len(book_images)} - {cur_img_name}"
+        tex_top, tw, th = render_text(hud_top, font_small, theme["text"])
+        if tex_top:
+            sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_top, None, sdl2.SDL_Rect(20, 15, min(tw, SCREEN_W - 40), th))
+            sdl2.SDL_DestroyTexture(tex_top)
+
+        renderer.fill((0, SCREEN_H - 55, SCREEN_W, 55), theme["header"])
+        renderer.fill((0, SCREEN_H - 55, SCREEN_W, 2), theme["sel"])
+        zoom_str = "Fit" if image_zoom <= 0 else f"{int(image_zoom*100)}%"
+        hud_bot = f"L/R: Switch | Y: Zoom In | A: Zoom Out ({zoom_str}) | X: Rotate | B: Back"
+        tex_bot, bw, bh = render_text(hud_bot, font_small, theme["text"])
+        if tex_bot:
+            sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_bot, None, sdl2.SDL_Rect(20, SCREEN_H - 38, min(bw, SCREEN_W - 40), bh))
+            sdl2.SDL_DestroyTexture(tex_bot)
