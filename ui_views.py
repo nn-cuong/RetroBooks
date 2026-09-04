@@ -378,116 +378,97 @@ def draw_toc_view(
     if len(book_images) > 0:
         tab0 = f"[ CHAPTERS ({len(chapter_offsets)}) ]" if toc_tab == 0 else f"CHAPTERS ({len(chapter_offsets)})"
         tab1 = f"[ IMAGES ({len(book_images)}) ]" if toc_tab == 1 else f"IMAGES ({len(book_images)})"
-        col0 = theme["sel"] if toc_tab == 0 else theme["text"]
-        col1 = theme["sel"] if toc_tab == 1 else theme["text"]
-
-        tex0, w0, h0 = render_text(tab0, font_medium, col0)
-        if tex0:
-            sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex0, None, sdl2.SDL_Rect(40, (60 - h0)//2, w0, h0))
-            sdl2.SDL_DestroyTexture(tex0)
-
-        tex1, w1, h1 = render_text(tab1, font_medium, col1)
-        if tex1:
-            sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex1, None, sdl2.SDL_Rect(340, (60 - h1)//2, w1, h1))
-            sdl2.SDL_DestroyTexture(tex1)
-
-        t_hint, hw, hh = render_text("L1/R1: Switch Tab", font_small, theme["text"])
-        if t_hint:
-            sdl2.SDL_RenderCopy(renderer.sdlrenderer, t_hint, None, sdl2.SDL_Rect(SCREEN_W - 40 - hw, (60 - hh)//2, hw, hh))
-            sdl2.SDL_DestroyTexture(t_hint)
+        toc_title = f"{tab0}    |    {tab1}  (L1/R1)"
     else:
-        tex, tw, th = render_text("TABLE OF CONTENTS", font_medium, theme["text"])
-        if tex:
-            sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(40, (60 - th)//2, tw, th))
-            sdl2.SDL_DestroyTexture(tex)
-
-    renderer.fill((0, 58, SCREEN_W, 2), theme["sel"])
-
+        toc_title = "CONTENTS"
+    tex, tw, th = render_text(toc_title, font_medium, theme["text"])
+    if tex:
+        sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(SCREEN_W//2 - tw//2, 10, min(tw, SCREEN_W-40), th))
+        sdl2.SDL_DestroyTexture(tex)
+        
     if toc_tab == 0:
-        # Chapters tab
         start_idx = max(0, toc_sel_index - visible_items // 2)
         end_idx = min(len(chapter_offsets), start_idx + visible_items)
-        if end_idx - start_idx < visible_items:
-            start_idx = max(0, end_idx - visible_items)
-
-        item_h = 42
-        y_offset = 75
-        for idx in range(start_idx, end_idx):
-            title, line_idx = chapter_offsets[idx]
-            y = y_offset + (idx - start_idx) * item_h
-            if idx == toc_sel_index:
-                renderer.fill((20, y, SCREEN_W - 40, item_h - 4), theme["sel"])
-                c = theme["bg"]
-            else:
-                c = theme["text"]
-            tex, tw, th = render_text(title, font_small, c)
-            if tex:
-                sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(35, y + (item_h - 4 - th)//2, min(tw, SCREEN_W - 80), th))
-                sdl2.SDL_DestroyTexture(tex)
-
-        if len(chapter_offsets) > visible_items:
-            sb_h = int((visible_items / len(chapter_offsets)) * (SCREEN_H - 120))
-            sb_y = y_offset + int((start_idx / len(chapter_offsets)) * (SCREEN_H - 120))
-            renderer.fill((SCREEN_W - 12, sb_y, 4, max(10, sb_h)), theme["sel"])
-
-        hint = "A: Go to Chapter   |   B: Close TOC"
-        tex_h, hw, hh = render_text(hint, font_small, theme["text"])
-        if tex_h:
-            sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_h, None, sdl2.SDL_Rect(40, SCREEN_H - 35, hw, hh))
-            sdl2.SDL_DestroyTexture(tex_h)
-
-    else:
-        # Images tab
-        grid_cols = 4
-        grid_rows = 2
-        page_size = grid_cols * grid_rows
-        page_idx = toc_img_sel_index // page_size
-        start_idx = page_idx * page_size
-        end_idx = min(len(book_images), start_idx + page_size)
-
-        cell_w = 216
-        cell_h = 260
-        gap_x = 24
-        gap_y = 20
-        grid_x = 40
-        grid_y = 75
-
+        
+        y_start = 80
         for i in range(start_idx, end_idx):
-            rel_i = i - start_idx
-            col = rel_i % grid_cols
-            row = rel_i // grid_cols
-            cx = grid_x + col * (cell_w + gap_x)
-            cy = grid_y + row * (cell_h + gap_y)
+            ch_title, ch_line = chapter_offsets[i]
+            iy = y_start + (i - start_idx) * 40
+            
+            if i == toc_sel_index:
+                renderer.fill((0, iy, SCREEN_W, 40), theme["sel"])
+                
+            tex, tw, th = render_text(ch_title, font_small, theme["text"])
+            if tex:
+                sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(40, iy + 5, min(tw, SCREEN_W-80), th))
+                sdl2.SDL_DestroyTexture(tex)
+                
+        footer = "D-Pad / Sticks: Move   |   A: Select Chapter   |   L1/R1: Switch Tab   |   B: Cancel"
+    else:
+        total_imgs = len(book_images)
+        items_per_page = 8
+        cols = 4
+        start_page = (toc_img_sel_index // items_per_page) * items_per_page
+        end_page = min(total_imgs, start_page + items_per_page)
 
-            is_sel = (i == toc_img_sel_index)
+        margin_x = 44
+        gap_x = 24
+        thumb_w = 216
+        thumb_h = 260
+        gap_y = 40
+        y_start = 80
+
+        for idx in range(start_page, end_page):
+            slot = idx - start_page
+            row = slot // cols
+            col = slot % cols
+            cell_x = margin_x + col * (thumb_w + gap_x)
+            cell_y = y_start + row * (thumb_h + gap_y)
+            is_sel = (idx == toc_img_sel_index)
+
+            renderer.fill((cell_x, cell_y, thumb_w, thumb_h), theme["header"])
+
+            img_path = book_images[idx]
+            thumb_info = get_book_img_thumbnail(img_path, image_loader, renderer, book_img_thumb_cache, thumb_w - 8, thumb_h - 8)
+            if thumb_info and thumb_info["tex"]:
+                tw = thumb_info["w"]
+                th = thumb_info["h"]
+                dst_x = cell_x + (thumb_w - tw) // 2
+                dst_y = cell_y + (thumb_h - th) // 2
+                sdl2.SDL_RenderCopy(renderer.sdlrenderer, thumb_info["tex"], None, sdl2.SDL_Rect(dst_x, dst_y, tw, th))
+            else:
+                tex_ph, pw, ph = render_text(f"Img {idx + 1}", font_small, theme.get("secondary", theme["text"]))
+                if tex_ph:
+                    sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_ph, None, sdl2.SDL_Rect(cell_x + (thumb_w - pw)//2, cell_y + (thumb_h - ph)//2, pw, ph))
+                    sdl2.SDL_DestroyTexture(tex_ph)
+
             if is_sel:
-                renderer.fill((cx - 3, cy - 3, cell_w + 6, cell_h + 6), theme["sel"])
-            renderer.fill((cx, cy, cell_w, cell_h), theme.get("header", theme["bg"]))
+                renderer.fill((cell_x - 3, cell_y - 3, thumb_w + 6, 3), theme["sel"])
+                renderer.fill((cell_x - 3, cell_y + thumb_h, thumb_w + 6, 3), theme["sel"])
+                renderer.fill((cell_x - 3, cell_y, 3, thumb_h), theme["sel"])
+                renderer.fill((cell_x + thumb_w, cell_y, 3, thumb_h), theme["sel"])
+            else:
+                renderer.fill((cell_x - 1, cell_y - 1, thumb_w + 2, 1), theme.get("divider", theme["header"]))
+                renderer.fill((cell_x - 1, cell_y + thumb_h, thumb_w + 2, 1), theme.get("divider", theme["header"]))
+                renderer.fill((cell_x - 1, cell_y, 1, thumb_h), theme.get("divider", theme["header"]))
+                renderer.fill((cell_x + thumb_w, cell_y, 1, thumb_h), theme.get("divider", theme["header"]))
 
-            img_path = book_images[i]
-            thumb = get_book_img_thumbnail(img_path, image_loader, renderer, book_img_thumb_cache, cell_w - 8, cell_h - 36)
-            if thumb:
-                tw = thumb["w"]
-                th = thumb["h"]
-                tx = cx + (cell_w - tw) // 2
-                ty = cy + 4 + (cell_h - 36 - th) // 2
-                sdl2.SDL_RenderCopy(renderer.sdlrenderer, thumb["tex"], None, sdl2.SDL_Rect(tx, ty, tw, th))
+            img_fn = os.path.basename(img_path)
+            if len(img_fn) > 18:
+                img_fn = img_fn[:15] + "..."
+            lbl_text = f"{idx + 1}. {img_fn}"
+            lbl_color = theme["sel"] if is_sel else theme["text"]
+            tex_lbl, lw, lh = render_text(lbl_text, font_small, lbl_color)
+            if tex_lbl:
+                sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_lbl, None, sdl2.SDL_Rect(cell_x + (thumb_w - min(lw, thumb_w))//2, cell_y + thumb_h + 6, min(lw, thumb_w), lh))
+                sdl2.SDL_DestroyTexture(tex_lbl)
 
-            lbl = f"#{i+1}: {os.path.basename(img_path)}"
-            col_txt = theme["bg"] if is_sel else theme["text"]
-            if is_sel:
-                renderer.fill((cx, cy + cell_h - 30, cell_w, 30), theme["sel"])
-            t_lbl, lw, lh = render_text(lbl, font_small, col_txt)
-            if t_lbl:
-                sdl2.SDL_RenderCopy(renderer.sdlrenderer, t_lbl, None, sdl2.SDL_Rect(cx + 4, cy + cell_h - 30 + (30 - lh)//2, min(lw, cell_w - 8), lh))
-                sdl2.SDL_DestroyTexture(t_lbl)
+        footer = "D-Pad / Sticks: Move   |   A: Jump to Text   |   X: Fullscreen   |   L1/R1: Tab   |   B: Cancel"
 
-        total_p = (len(book_images) + page_size - 1) // page_size
-        hint = f"A: View Fullscreen   |   B: Close TOC   |   Page {page_idx + 1}/{total_p}"
-        tex_h, hw, hh = render_text(hint, font_small, theme["text"])
-        if tex_h:
-            sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_h, None, sdl2.SDL_Rect(40, SCREEN_H - 35, hw, hh))
-            sdl2.SDL_DestroyTexture(tex_h)
+    tex, tw, th = render_text(footer, font_small, theme["text"])
+    if tex:
+        sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(20, SCREEN_H - 40, tw, th))
+        sdl2.SDL_DestroyTexture(tex)
 
 
 def draw_image_view(
