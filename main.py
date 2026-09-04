@@ -364,6 +364,7 @@ def main():
                 reader_scroll_y += 1
     
     space_width = 12
+    font_cache = {} # font_size -> (font_handle, char_widths, base_space_w)
 
     def recalculate_layout(only_metrics=False):
         nonlocal lines_per_page, line_height, font_medium, reader_lines, chapter_offsets, space_width, page_items_drawn
@@ -375,37 +376,48 @@ def main():
         if only_metrics:
             return
 
-        if font_medium:
-            sdlttf.TTF_CloseFont(font_medium)
-        font_medium = sdlttf.TTF_OpenFont(reading_font_bytes, current_font_size)
-        
-        # Fast character width measurement
         w = ctypes.c_int()
         h = ctypes.c_int()
-        char_widths = {}
-        
-        # Pre-measure common characters to eliminate CTypes FFI overhead during paragraph wrapping
-        common_chars = " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~" \
-                       "àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ" \
-                       "ÀÁẢÃẠĂẰẮẲẴẶÂẦẤẨẪẬÈÉẺẼẸÊỀẾỂỄỆÌÍỈĨỊÒÓỎÕỌÔỒỐỔỖỘƠỜỚỞỠỢÙÚỦŨỤƯỪỨỬỮỰỲÝỶỸỴĐ" \
-                       "“”‘’…—–·•«»"
-        for ch in common_chars:
-            sdlttf.TTF_SizeUTF8(font_medium, ch.encode('utf-8', errors='replace'), ctypes.byref(w), ctypes.byref(h))
-            char_widths[ch] = w.value
-            
-        def get_w(ch):
-            if ch not in char_widths:
+        if current_font_size in font_cache:
+            font_medium, char_widths, base_space_w = font_cache[current_font_size]
+        else:
+            font_medium = sdlttf.TTF_OpenFont(reading_font_bytes, current_font_size)
+            char_widths = {}
+            common_chars = " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~" \
+                           "àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ" \
+                           "ÀÁẢÃẠĂẰẮẲẴẶÂẦẤẨẪẬÈÉẺẼẸÊỀẾỂỄỆÌÍỈĨỊÒÓỎÕỌÔỒỐỔỖỘƠỜỚỞỠỢÙÚỦŨỤƯỪỨỬỮỰỲÝỶỸỴĐ" \
+                           "“”‘’…—–·•«»"
+            for ch in common_chars:
                 sdlttf.TTF_SizeUTF8(font_medium, ch.encode('utf-8', errors='replace'), ctypes.byref(w), ctypes.byref(h))
                 char_widths[ch] = w.value
-            return char_widths[ch]
-            
-        def get_word_w(word_str):
-            return sum(get_w(c) for c in word_str)
-            
-        base_space_w = get_w(" ")
+            sdlttf.TTF_SizeUTF8(font_medium, b" ", ctypes.byref(w), ctypes.byref(h))
+            base_space_w = w.value if w.value > 0 else (current_font_size // 3)
+            font_cache[current_font_size] = (font_medium, char_widths, base_space_w)
+
+        base_space_w = base_space_w or char_widths.get(" ", current_font_size // 3)
         space_width = max(2, int(base_space_w * word_spacing_mult))
         indent_width = space_width * 3
         max_line_width = max(100, reader_w - (margin_side * 2))
+        
+        # Word width caching for maximum performance
+        word_widths = {}
+        get_cw = char_widths.get
+        fallback_cw = char_widths.get("m", current_font_size // 2)
+        
+        def get_word_w(word_str):
+            ww = word_widths.get(word_str)
+            if ww is None:
+                total_w = 0
+                for c in word_str:
+                    cw = get_cw(c)
+                    if cw is None:
+                        w_tmp = ctypes.c_int()
+                        h_tmp = ctypes.c_int()
+                        sdlttf.TTF_SizeUTF8(font_medium, c.encode('utf-8', errors='replace'), ctypes.byref(w_tmp), ctypes.byref(h_tmp))
+                        cw = char_widths[c] = w_tmp.value if w_tmp.value > 0 else fallback_cw
+                    total_w += cw
+                ww = word_widths[word_str] = total_w
+            return ww
         
         reader_lines = []
         chapter_offsets = []
@@ -413,7 +425,7 @@ def main():
         for title, text in raw_chapters:
             chapter_offsets.append((title, len(reader_lines)))
             for paragraph in text.split('\n'):
-                paragraph = paragraph.replace('\t', '    ').strip()
+                paragraph = paragraph.strip()
                 if not paragraph:
                     reader_lines.append("")
                     continue
@@ -430,17 +442,16 @@ def main():
                     if "|" in inner:
                         marker, note_text = inner.split("|", 1)
                     
-                    f_words = note_text.split(' ')
+                    f_words = note_text.split()
                     f_lines = []
                     cur_f_line = []
                     cur_f_w = 0
                     f_max_w = max_line_width - 40
                     for fw in f_words:
-                        if not fw: continue
                         fww = get_word_w(fw)
                         if not cur_f_line:
                             cur_f_line.append(fw)
-                            cur_f_w += fww
+                            cur_f_w = fww
                         else:
                             if cur_f_w + space_width + fww <= f_max_w:
                                 cur_f_line.append(fw)
@@ -455,14 +466,16 @@ def main():
                     reader_lines.append({"type": "footnote", "marker": marker, "lines": f_lines})
                     continue
                 
-                # Split words
-                words = paragraph.split(' ')
+                words = paragraph.split()
+                if not words:
+                    reader_lines.append("")
+                    continue
+                    
                 current_line = []
                 current_w = indent_width
                 is_first_line = True
                 
                 for word in words:
-                    if not word: continue
                     ww = get_word_w(word)
                     
                     if not current_line:
@@ -482,6 +495,7 @@ def main():
                 if current_line:
                     prefix = "   " if is_first_line else ""
                     reader_lines.append(prefix + " ".join(current_line))
+
                     
     def save_current_reader_state():
         if current_filepath:
@@ -901,6 +915,17 @@ def main():
                             typography_sel_idx = (typography_sel_idx + 1) % 5
                             needs_redraw = True
                         elif btn in (sdl2.SDL_CONTROLLER_BUTTON_DPAD_LEFT, sdl2.SDL_CONTROLLER_BUTTON_LEFTSHOULDER):
+                            old_ch_idx = 0
+                            old_rel_line = 0
+                            for idx, (ch_t, ch_off) in enumerate(chapter_offsets):
+                                if ch_off <= reader_scroll_y:
+                                    old_ch_idx = idx
+                                    old_rel_line = reader_scroll_y - ch_off
+                                else:
+                                    break
+                            old_total_ch_lines = (chapter_offsets[old_ch_idx+1][1] - chapter_offsets[old_ch_idx][1]) if old_ch_idx + 1 < len(chapter_offsets) else max(1, len(reader_lines) - chapter_offsets[old_ch_idx][1])
+                            old_ratio = old_rel_line / max(1, old_total_ch_lines)
+
                             if typography_sel_idx == 0:
                                 current_font_size = max(20, current_font_size - 2)
                                 recalculate_layout(only_metrics=False)
@@ -916,10 +941,27 @@ def main():
                             elif typography_sel_idx == 4:
                                 theme_idx = (theme_idx - 1) % len(THEMES)
                                 write_theme_idx(theme_idx)
-                            if reader_lines:
-                                reader_scroll_y = max(0, min(reader_scroll_y, len(reader_lines) - lines_per_page))
+
+                            if typography_sel_idx in (0, 2, 3) and reader_lines and chapter_offsets:
+                                new_ch_off = chapter_offsets[old_ch_idx][1] if old_ch_idx < len(chapter_offsets) else 0
+                                new_total_ch_lines = (chapter_offsets[old_ch_idx+1][1] - new_ch_off) if old_ch_idx + 1 < len(chapter_offsets) else max(1, len(reader_lines) - new_ch_off)
+                                reader_scroll_y = max(0, min(new_ch_off + int(old_ratio * new_total_ch_lines), max(0, len(reader_lines) - lines_per_page)))
+                            elif reader_lines:
+                                reader_scroll_y = max(0, min(reader_scroll_y, max(0, len(reader_lines) - lines_per_page)))
                             needs_redraw = True
+
                         elif btn in (sdl2.SDL_CONTROLLER_BUTTON_DPAD_RIGHT, sdl2.SDL_CONTROLLER_BUTTON_RIGHTSHOULDER):
+                            old_ch_idx = 0
+                            old_rel_line = 0
+                            for idx, (ch_t, ch_off) in enumerate(chapter_offsets):
+                                if ch_off <= reader_scroll_y:
+                                    old_ch_idx = idx
+                                    old_rel_line = reader_scroll_y - ch_off
+                                else:
+                                    break
+                            old_total_ch_lines = (chapter_offsets[old_ch_idx+1][1] - chapter_offsets[old_ch_idx][1]) if old_ch_idx + 1 < len(chapter_offsets) else max(1, len(reader_lines) - chapter_offsets[old_ch_idx][1])
+                            old_ratio = old_rel_line / max(1, old_total_ch_lines)
+
                             if typography_sel_idx == 0:
                                 current_font_size = min(60, current_font_size + 2)
                                 recalculate_layout(only_metrics=False)
@@ -935,9 +977,15 @@ def main():
                             elif typography_sel_idx == 4:
                                 theme_idx = (theme_idx + 1) % len(THEMES)
                                 write_theme_idx(theme_idx)
-                            if reader_lines:
-                                reader_scroll_y = max(0, min(reader_scroll_y, len(reader_lines) - lines_per_page))
+
+                            if typography_sel_idx in (0, 2, 3) and reader_lines and chapter_offsets:
+                                new_ch_off = chapter_offsets[old_ch_idx][1] if old_ch_idx < len(chapter_offsets) else 0
+                                new_total_ch_lines = (chapter_offsets[old_ch_idx+1][1] - new_ch_off) if old_ch_idx + 1 < len(chapter_offsets) else max(1, len(reader_lines) - new_ch_off)
+                                reader_scroll_y = max(0, min(new_ch_off + int(old_ratio * new_total_ch_lines), max(0, len(reader_lines) - lines_per_page)))
+                            elif reader_lines:
+                                reader_scroll_y = max(0, min(reader_scroll_y, max(0, len(reader_lines) - lines_per_page)))
                             needs_redraw = True
+
                         elif btn == sdl2.SDL_CONTROLLER_BUTTON_B: # Physical A: Save
                             write_typography_settings(current_font_size, line_spacing_mult, word_spacing_mult, margin_side)
                             write_theme_idx(theme_idx)
@@ -947,15 +995,22 @@ def main():
                             toast_timer = current_ticks
                             needs_redraw = True
                         elif btn in (sdl2.SDL_CONTROLLER_BUTTON_A, sdl2.SDL_CONTROLLER_BUTTON_BACK): # Physical B / Select: Cancel
+                            need_full_recalc = (current_font_size != orig_font_size or word_spacing_mult != orig_word_spacing or margin_side != orig_margin_side)
                             current_font_size = orig_font_size
                             line_spacing_mult = orig_line_spacing
                             word_spacing_mult = orig_word_spacing
                             margin_side = orig_margin_side
                             theme_idx = orig_theme_idx
                             write_theme_idx(theme_idx)
-                            recalculate_layout()
+                            if need_full_recalc:
+                                recalculate_layout(only_metrics=False)
+                            else:
+                                recalculate_layout(only_metrics=True)
+                            if reader_lines:
+                                reader_scroll_y = max(0, min(reader_scroll_y, max(0, len(reader_lines) - lines_per_page)))
                             show_typography_popup = False
                             needs_redraw = True
+
                     else:
                         if btn == sdl2.SDL_CONTROLLER_BUTTON_DPAD_UP:
                             handle_reader_direction(0, -1)
@@ -1345,8 +1400,13 @@ def main():
 
     cover_manager.shutdown()
     clear_book_img_thumb_cache()
-    if font_medium:
+    for f_h, _, _ in font_cache.values():
+        if f_h:
+            sdlttf.TTF_CloseFont(f_h)
+    font_cache.clear()
+    if font_medium and not any(font_medium == fh for fh, _, _ in font_cache.values()):
         sdlttf.TTF_CloseFont(font_medium)
+
     if reader_target:
         sdl2.SDL_DestroyTexture(reader_target)
     if loaded_image_tex:
