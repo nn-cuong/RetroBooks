@@ -16,9 +16,14 @@ from parsers import extract_epub_cover_data, extract_kindle_cover_data
 def log_debug(msg):
     pass
 
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
+DEFAULT_COVER_CACHE = os.path.join(APP_DIR, ".cache", "covers")
+
 class CoverManager:
     """Fast Async Cover System: background worker threads + disk cache + native surfaces."""
-    def __init__(self, cache_dir="/mnt/SDCARD/.cover_cache", num_threads=3):
+    def __init__(self, cache_dir=None, num_threads=3):
+        if cache_dir is None:
+            cache_dir = DEFAULT_COVER_CACHE
         self.cache_dir = cache_dir
         try:
             os.makedirs(self.cache_dir, exist_ok=True)
