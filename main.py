@@ -1030,11 +1030,17 @@ def main():
                             # Tab 1: Jump directly to image position in reading mode
                             if len(book_images) > 0:
                                 target_img = book_images[toc_img_sel_index]
-                                target_line = find_image_reader_line(target_img)
+                                target_line = find_image_reader_line(target_img, reader_lines)
                                 if target_line is not None:
-                                    reader_scroll_y = max(0, min(target_line, len(reader_lines) - 1))
-                            state = STATE_READER
+                                    reader_scroll_y = max(0, min(target_line, max(0, len(reader_lines) - 1)))
+                                    state = STATE_READER
+                                else:
+                                    toast_msg = "Image not in text (use X to view)"
+                                    toast_timer = current_ticks
+                            else:
+                                state = STATE_READER
                         needs_redraw = True
+
                     elif btn == sdl2.SDL_CONTROLLER_BUTTON_Y: # Physical X - View Image Fullscreen
                         if toc_tab == 1 and len(book_images) > 0:
                             current_image_idx = toc_img_sel_index

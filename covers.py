@@ -260,9 +260,17 @@ def find_image_reader_line(target_img_path, reader_lines):
     if not target_img_path or not reader_lines:
         return None
     clean_target = os.path.basename(target_img_path.split('?')[0].split('#')[0]).lower()
-    for line_idx, line in enumerate(reader_lines):
-        if isinstance(line, dict) and line.get("type") == "image":
-            src = line.get("src", "")
-            if src == target_img_path or os.path.basename(src.split('?')[0].split('#')[0]).lower() == clean_target:
-                return line_idx
+    for l_idx, r_line in enumerate(reader_lines):
+        if isinstance(r_line, dict) and (r_line.get("type") == "image" or r_line.get("is_image")):
+            src = r_line.get("src") or r_line.get("image_key", "")
+            if src == target_img_path:
+                return l_idx
+            clean_src = os.path.basename(src.split('?')[0].split('#')[0]).lower() if src else ""
+            if clean_src and clean_src == clean_target:
+                return l_idx
+            if clean_target and (clean_target in src.lower() or (clean_src and clean_src in target_img_path.lower())):
+                return l_idx
+        elif isinstance(r_line, str) and clean_target and clean_target in r_line.lower():
+            return l_idx
     return None
+
