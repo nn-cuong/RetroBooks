@@ -403,7 +403,7 @@ def draw_toc_view(
                 sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex, None, sdl2.SDL_Rect(40, iy + 5, min(tw, SCREEN_W-80), th))
                 sdl2.SDL_DestroyTexture(tex)
                 
-        footer = "D-Pad / Sticks: Move   |   A: Select Chapter   |   L1/R1: Switch Tab   |   B: Cancel"
+        footer = "DPAD / Sticks: Move   |   A: Select Chapter   |   L1/R1: Switch Tab   |   B: Cancel"
     else:
         total_imgs = len(book_images)
         items_per_page = 8
@@ -463,7 +463,7 @@ def draw_toc_view(
                 sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_lbl, None, sdl2.SDL_Rect(cell_x + (thumb_w - min(lw, thumb_w))//2, cell_y + thumb_h + 6, min(lw, thumb_w), lh))
                 sdl2.SDL_DestroyTexture(tex_lbl)
 
-        footer = "D-Pad / Sticks: Move   |   A: Jump to Text   |   X: Fullscreen   |   L1/R1: Tab   |   B: Cancel"
+        footer = "DPAD / Sticks: Move   |   A: Jump to Text   |   X: Fullscreen   |   L1/R1: Tab   |   B: Cancel"
 
     tex, tw, th = render_text(footer, font_small, theme["text"])
     if tex:

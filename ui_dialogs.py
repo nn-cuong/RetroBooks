@@ -148,7 +148,7 @@ def draw_typography_popup(renderer, theme, current_font_size, line_spacing_mult,
             sdl2.SDL_DestroyTexture(tex_v)
             
     footer_y = pop_y + pop_h - 42
-    msg_foot = "A: Save   |   B / R2: Cancel   |   D-Pad: Select & Adjust"
+    msg_foot = "A: Save   |   B / R2: Cancel   |   DPAD: Select & Adjust"
     tex_foot, fw, fh = render_text(msg_foot, font_small, theme["text"])
     if tex_foot:
         sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_foot, None, sdl2.SDL_Rect(pop_x + (pop_w - fw) // 2, footer_y, fw, fh))
