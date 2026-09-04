@@ -721,24 +721,6 @@ def main():
                         last_axis_scroll = current_ticks
                         needs_redraw = True
                         break
-                elif image_zoom <= 0 and (current_ticks - last_axis_scroll > 200):
-                    if abs(ax) >= 15000:
-                        if ax < 0: # Left
-                            if len(book_images) > 0:
-                                current_image_idx = (current_image_idx - 1) % len(book_images)
-                                image_zoom = -1.0
-                                image_pan_x = 0
-                                image_pan_y = 0
-                                needs_redraw = True
-                        else: # Right
-                            if len(book_images) > 0:
-                                current_image_idx = (current_image_idx + 1) % len(book_images)
-                                image_zoom = -1.0
-                                image_pan_x = 0
-                                image_pan_y = 0
-                                needs_redraw = True
-                        last_axis_scroll = current_ticks
-                        break
                     
         for event in events:
             if event.type == sdl2.SDL_QUIT:
@@ -1110,35 +1092,30 @@ def main():
                         needs_redraw = True
 
                 elif state == STATE_IMAGE_VIEW:
-                    if btn == sdl2.SDL_CONTROLLER_BUTTON_DPAD_LEFT or btn == sdl2.SDL_CONTROLLER_BUTTON_LEFTSHOULDER:
+                    if btn == sdl2.SDL_CONTROLLER_BUTTON_LEFTSHOULDER:
                         if len(book_images) > 0:
                             current_image_idx = (current_image_idx - 1) % len(book_images)
                             image_zoom = -1.0
                             image_pan_x = 0
                             image_pan_y = 0
                             needs_redraw = True
-                    elif btn == sdl2.SDL_CONTROLLER_BUTTON_DPAD_RIGHT or btn == sdl2.SDL_CONTROLLER_BUTTON_RIGHTSHOULDER:
+                    elif btn == sdl2.SDL_CONTROLLER_BUTTON_RIGHTSHOULDER:
                         if len(book_images) > 0:
                             current_image_idx = (current_image_idx + 1) % len(book_images)
                             image_zoom = -1.0
                             image_pan_x = 0
                             image_pan_y = 0
                             needs_redraw = True
-                    elif btn == sdl2.SDL_CONTROLLER_BUTTON_X: # Physical Y - Zoom In
-                        if image_zoom <= 0:
-                            vw, vh = SCREEN_W, SCREEN_H
-                            eff_w, eff_h = (image_h, image_w) if image_rotation % 2 == 1 else (image_w, image_h)
-                            fit_zoom = min(float(vw) / eff_w, float(vh) / eff_h) if eff_w > 0 and eff_h > 0 else 1.0
-                            image_zoom = min(fit_zoom * 1.25, 4.0)
-                        else:
-                            image_zoom = min(image_zoom * 1.25, 4.0)
-                        needs_redraw = True
-                    elif btn == sdl2.SDL_CONTROLLER_BUTTON_B: # Physical A - Zoom Out
+                    elif btn == sdl2.SDL_CONTROLLER_BUTTON_X: # Physical Y - Zoom
                         vw, vh = SCREEN_W, SCREEN_H
                         eff_w, eff_h = (image_h, image_w) if image_rotation % 2 == 1 else (image_w, image_h)
                         fit_zoom = min(float(vw) / eff_w, float(vh) / eff_h) if eff_w > 0 and eff_h > 0 else 1.0
-                        if image_zoom > fit_zoom * 1.05:
-                            image_zoom = max(image_zoom / 1.25, fit_zoom)
+                        if image_zoom <= 0:
+                            image_zoom = round(fit_zoom * 1.5, 3)
+                        elif image_zoom <= round(fit_zoom * 1.7, 3):
+                            image_zoom = round(fit_zoom * 2.0, 3)
+                        elif image_zoom <= round(fit_zoom * 2.3, 3):
+                            image_zoom = round(fit_zoom * 3.0, 3)
                         else:
                             image_zoom = -1.0
                             image_pan_x = 0
@@ -1150,7 +1127,10 @@ def main():
                         image_pan_x = 0
                         image_pan_y = 0
                         needs_redraw = True
-                    elif btn in (sdl2.SDL_CONTROLLER_BUTTON_A, sdl2.SDL_CONTROLLER_BUTTON_BACK): # Physical B or Select - Back
+                    elif btn == sdl2.SDL_CONTROLLER_BUTTON_B: # Physical A - Toggle HUD
+                        show_hud = not show_hud
+                        needs_redraw = True
+                    elif btn in (sdl2.SDL_CONTROLLER_BUTTON_A, sdl2.SDL_CONTROLLER_BUTTON_BACK): # Physical B or Select - Cancel / Back
                         if image_view_source == "toc":
                             state = STATE_TOC
                             toc_tab = 1
@@ -1165,6 +1145,14 @@ def main():
                     elif btn == sdl2.SDL_CONTROLLER_BUTTON_DPAD_DOWN:
                         if image_zoom > 0:
                             image_pan_y -= 60
+                            needs_redraw = True
+                    elif btn == sdl2.SDL_CONTROLLER_BUTTON_DPAD_LEFT:
+                        if image_zoom > 0:
+                            image_pan_x += 60
+                            needs_redraw = True
+                    elif btn == sdl2.SDL_CONTROLLER_BUTTON_DPAD_RIGHT:
+                        if image_zoom > 0:
+                            image_pan_x -= 60
                             needs_redraw = True
 
         # Key repeat logic for library (exact Files app behavior)

@@ -518,8 +518,8 @@ def draw_image_view(
 
         renderer.fill((0, SCREEN_H - 55, SCREEN_W, 55), theme["header"])
         renderer.fill((0, SCREEN_H - 55, SCREEN_W, 2), theme["sel"])
-        zoom_str = "Fit" if image_zoom <= 0 else f"{int(image_zoom*100)}%"
-        hud_bot = f"L/R: Switch | Y: Zoom In | A: Zoom Out ({zoom_str}) | X: Rotate | B: Back"
+        zoom_str = "Fit" if image_zoom <= 0 else f"{int(round((image_zoom / fit_zoom if fit_zoom > 0 else image_zoom) * 100))}%"
+        hud_bot = f"L/R: Switch | Y: Zoom ({zoom_str}) | X: Rotate | A: HUD | B: Cancel"
         tex_bot, bw, bh = render_text(hud_bot, font_small, theme["text"])
         if tex_bot:
             sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_bot, None, sdl2.SDL_Rect(20, SCREEN_H - 38, min(bw, SCREEN_W - 40), bh))
