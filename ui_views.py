@@ -206,7 +206,7 @@ def draw_browse_view(
             sb_y = list_y_start + int((scroll_y / len(list_items)) * (SCREEN_H - 160))
             renderer.fill((SCREEN_W - 14, sb_y, 4, max(10, sb_h)), library_theme["divider"])
 
-    footer_hint = "A: Open   |   B: Back / Up   |   X: Mode   |   Y: Theme   |   START: Exit"
+    footer_hint = "A: Open   B: Back / Up   X: Mode   Y: Theme   SELECT: Info   [START] Exit"
     tex_foot, fw, fh = render_text(footer_hint, font_small, library_theme["secondary"])
     if tex_foot:
         sdl2.SDL_RenderCopy(renderer.sdlrenderer, tex_foot, None, sdl2.SDL_Rect(32, SCREEN_H - 50 + (50 - fh)//2, fw, fh))
